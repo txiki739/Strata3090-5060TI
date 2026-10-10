@@ -254,7 +254,7 @@ acceptance).
   one token, but no faster in the engine: eight threads are bound by the RAM; its switches stay, off), guthirry's
   `--no-second-gpu-adapt` (no change), and the 4-bit K/V caches (`k8v4`, `q4_0`: they lose some accuracy).
 
-## A model whose experts do not fit in RAM: Q8_0
+## A model whose experts do not fit in RAM: Q8_0, and a UD-Q6_K_XL made from it
 
 huihui-ai's abliterated Qwen3.8-Flash-Next in Q8_0 has 119.5 GiB of experts; with nothing loaded this machine has
 ~120 GiB available. Two new options keep the profile's hottest experts **only in VRAM**:
@@ -270,40 +270,86 @@ loader to accept the architecture name on every shard.
 With 11 + 11 GiB pinned the engine takes ~97.5 GiB of RAM and ~19 GiB stay free, enough for a prompt cache of 32
 checkpoints and 10 GiB of parked conversations (filled for real: at least 6 GiB still free).
 
-| Huihui, RTX 3090 + RTX 5060 Ti | UD-Q4_K_XL | Q8_0 |
-|---|---:|---:|
-| Decode, six-prompt mean | 84.0 tok/s | **41.8 tok/s** |
-| Agent session (18 steps) | 84.6 tok/s | 44.6 tok/s |
-| Reading an 18K / 200K prompt | 1,782 / 2,284 tok/s | 1,330 / 2,057 tok/s |
-| Perplexity, 2,304 tokens of held-out Spanish text (teacher-forced) | 4.515 | **4.480** |
-| 24 math/logic problems, 4 coding tasks | 24/24, 4/4 | 24/24, 4/4 |
+huihui-ai publishes no Q6, so one was made here from the Q8_0 with llama.cpp and unsloth's UD-Q6_K_XL recipe (Q6_K
+for the gate/up experts of 47 layers, everything else as in the Q8_0) and unsloth's imatrix; it carries the Q8_0's
+abliteration:
+
+```
+llama-quantize --allow-requantize --imatrix imatrix_unsloth.gguf --keep-split --tensor-type-file types.txt \
+  Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf Qwen3.8-Flash-Next-UD-Q6_K_XL.gguf Q8_0 16
+# types.txt, one per line: blk\.2\.ffn_gate_exps=q8_0  blk\.2\.ffn_up_exps=q8_0  ffn_gate_exps=q6_k  ffn_up_exps=q6_k
+#                          indexer\.k_proj=bf16  indexer\.q_proj=bf16  ple_conv1d=f32
+```
+
+Its 101.7 GiB of experts fit in RAM, but pinning still pays because it reads less of the RAM: 54.2, 55.9 and
+54.7 tok/s with 0, 6 and 11 GiB per card. The Q8_0's settings were already its best: `--pcie-frac` 0.15 or 0.35,
+`--spec-min-p` 0.7 or 0.9, 12 MB of second-GPU prefetch, five pool workers and 35% or 55% of the head on the second
+card all stayed within 2% of them (two runs of the base were 1.2% apart).
+
+| Huihui, RTX 3090 + RTX 5060 Ti | UD-Q4_K_XL | UD-Q6_K_XL | Q8_0 |
+|---|---:|---:|---:|
+| Experts only in VRAM | - | 6 + 6 GiB | 11 + 11 GiB |
+| Decode, six-prompt mean | 84.0 tok/s | **55.9 tok/s** | 41.8 tok/s |
+| Agent session (18 steps) | 84.6 tok/s | 57.7 tok/s | 44.6 tok/s |
+| Reading an 18K / 200K prompt | 1,782 / 2,284 tok/s | 1,457 / 2,109 tok/s | 1,330 / 2,057 tok/s |
+| Perplexity, 19,208 teacher-forced tokens (Spanish, English docs, code) | 4.860 | 4.965 | 4.932 |
+| KL from Q8_0 over them (x 1000) · same top-1 token | 64.1 · 91.2% | **17.7 · 95.1%** | 21.2 · 94.8% (a second run) |
+| Perplexity, 2,304 tokens of held-out Spanish text (teacher-forced) | 4.515 | - | **4.480** |
+| 50 hard problems (40 math/logic, 10 coding; answers computed by code) | 43/50 | 40/50 | 40/50 |
+| 24 math/logic problems, 4 coding tasks | 24/24, 4/4 | - | 24/24, 4/4 |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/readme/q8-decode-dark.svg">
-  <img alt="Huihui decode per prompt on both cards, UD-Q4_K_XL vs Q8_0: Spanish chat 76.5/39.6, reasoning 95.0/44.4, after an 18K document 77.5/43.7, code 89.8/41.5, edit 131.0/41.4, after a 5K prompt 53.7/40.8 tok/s." src="docs/media/readme/q8-decode-light.svg">
+  <img alt="Huihui decode per prompt on both cards, UD-Q4_K_XL / UD-Q6_K_XL / Q8_0: Spanish chat 76.5/60.0/39.6, reasoning 95.0/59.5/44.4, after an 18K document 77.5/54.0/43.7, code 89.8/54.2/41.5, edit 131.0/63.2/41.4, after a 5K prompt 53.7/46.4/40.8 tok/s." src="docs/media/readme/q8-decode-light.svg">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/readme/q8-prefill-dark.svg">
-  <img alt="Huihui prompt reading on both cards, UD-Q4_K_XL vs Q8_0: 18,076 tokens 1,782/1,330 tok/s, 5,296 tokens 1,120/610, 3,340 tokens 808/426." src="docs/media/readme/q8-prefill-light.svg">
+  <img alt="Huihui prompt reading on both cards, UD-Q4_K_XL / UD-Q6_K_XL / Q8_0: 18,076 tokens 1,782/1,457/1,330 tok/s, 5,296 tokens 1,120/728/610, 3,340 tokens 808/518/426." src="docs/media/readme/q8-prefill-light.svg">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/readme/q8-longctx-dark.svg">
-  <img alt="Huihui decode right after a long prompt on both cards, UD-Q4_K_XL vs Q8_0: 32K 76.1/40.0, 64K 92.3/46.6, 120K 74.8/33.5, 200K 71.0/40.4 tok/s." src="docs/media/readme/q8-longctx-light.svg">
+  <img alt="Huihui decode right after a long prompt on both cards, UD-Q4_K_XL / UD-Q6_K_XL / Q8_0: 32K 76.1/51.9/40.0, 64K 92.3/65.1/46.6, 120K 74.8/41.7/33.5, 200K 71.0/51.9/40.4 tok/s." src="docs/media/readme/q8-longctx-light.svg">
 </picture>
 
 The Q8_0 decodes at half the speed of UD-Q4_K_XL whatever the prompt: unlike UD-Q4_K_XL it gains nothing from a
-draft that is accepted (the edit prompt), since every extra token brings its own experts from the RAM. Long prompts
-are read almost as fast (2,057-2,256 tok/s; a 200K prompt in 97 s against 88), because the prompt path computes
-every expert on the GPUs. Decode two runs each, the long prompts one run (128 tokens of answer, so they move more),
-prompt reading the median of four (UD-Q4_K_XL) and eight (Q8_0) runs.
+draft that is accepted (the edit prompt), since every extra token brings its own experts from the RAM. UD-Q6_K_XL
+sits where the RAM puts it: the two cards serve 87.8% of UD-Q4_K_XL's routed experts, 76.6% of UD-Q6_K_XL's and
+68.1% of Q8_0's, and each miss is bigger, so per token UD-Q6_K_XL reads ~2.9x and Q8_0 ~4.4x what UD-Q4_K_XL reads
+from the RAM; a fixed GPU time plus that RAM time, fitted on UD-Q4_K_XL and Q8_0, predicts 55 tok/s for UD-Q6_K_XL,
+which does 56. Long prompts are read almost as fast (2,057-2,292 tok/s; a 200K prompt in 95 s for UD-Q6_K_XL and
+97 s for Q8_0 against 88), because the prompt path computes every expert on the GPUs; one UD-Q6_K_XL run took 119 s
+for the 200K prompt, which did not happen again when repeated with system counters (the Q8_0's repeat: 97.4 s against
+97.2). Decode two runs each (three for UD-Q6_K_XL), the long prompts one run (two for UD-Q6_K_XL; 128 tokens of
+answer, so they move more), prompt reading the median of four (UD-Q4_K_XL), three (UD-Q6_K_XL) and eight (Q8_0) runs.
 
 Q8_0 decode is bound by the RAM: ~1 GB of experts per token comes from the DDR4 (43 GB/s measured) once both cards
 are full, so the settings that read less from it won: `--pcie-frac 0.25` (+5%), `--spec-min-p 0.8` (drafts only
 when likely, +2.6%) and `--feed-max 128` (short prompts through the verify windows: the first token of a short
 chat in 2.0 s instead of ~2.9). Adapting less often, fewer swaps, no prompt lookup, no prefetch, more pool workers,
 a bigger PLE row cache and a smaller VRAM reserve (out of memory) were all slower or no faster.
+
+Quality over 19,208 teacher-forced tokens in one sequence (three held-out Spanish articles, two encyclopedic ones,
+two English docs, C++ and Python): UD-Q6_K_XL is as close to the Q8_0 as a second Q8_0 run is (KL 0.018 against
+0.021, the same top-1 token 95.1% of the time against 94.8%), with a 0.7% higher perplexity (+0.0067 ± 0.0017 nats
+per token). Huihui's UD-Q4_K_XL is further away (KL 0.064, 91.2%) yet predicts this text 1.5% better, and unsloth's
+UD-Q4_K_XL, not abliterated, 1.1% better. Huihui's UD-Q4_K_XL is a hybrid: only its Q8_0 tensors (the 96 dense ones
+the abliteration changes and five layers' down experts) differ from unsloth's, so it is another model rather than a
+coarser Q8_0, and the abliteration seems to cost more perplexity than 4-bit experts do. On the held-out Spanish alone
+the Q8_0 stays ahead of it (+0.3% here, +0.8% on the 2,304 tokens of the table). On the 50 hard problems the differences
+are noise: every miss but one ran out of its 8,000 reasoning tokens, and the one wrong answer was the Q8_0's (14,453
+days for 14,454).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/readme/q6-quality-dark.svg">
+  <img alt="KL divergence from Q8_0 times 1000, teacher-forced over 19,208 tokens of Spanish, English and code: a second Q8_0 run 21.2, UD-Q6_K_XL 17.7, Huihui's UD-Q4_K_XL 64.1, unsloth's UD-Q4_K_XL (not abliterated) 40.6." src="docs/media/readme/q6-quality-light.svg">
+</picture>
+
+- **Abliteration strengths do not mix.** In the 96 dense tensors the Q8_0 carries ~0.51 of Huihui UD-Q4_K_XL's
+  abliteration (the leading singular direction of each difference). Bringing the Q6's dense tensors up to the
+  UD-Q4_K_XL's while its experts keep the Q8_0's broke it: ~150 of the 19,208 tokens 2-7 nats worse, +0.04 nats
+  overall, with every engine path ruled out; the Q6 keeps the Q8_0's abliteration.
 
 - **Route-resident routing** (upstream 5df35dcb and #1737 by aly8246, opt-in with `STRATA_ROUTE_RESIDENT=<margin>`),
   ported into this fork's fused router, with the second GPU's experts also counting as held (which doubles the

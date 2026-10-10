@@ -1,51 +1,65 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" role="img" aria-label="Huihui decode per prompt on both cards: UD-Q4_K_XL vs Q8_0" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
-<title>Huihui decode per prompt on both cards: UD-Q4_K_XL vs Q8_0</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="456" viewBox="0 0 760 456" role="img" aria-label="Huihui decode per prompt on both cards: UD-Q4_K_XL, UD-Q6_K_XL and Q8_0" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<title>Huihui decode per prompt on both cards: UD-Q4_K_XL, UD-Q6_K_XL and Q8_0</title>
 <text x="0" y="16" font-size="15" font-weight="600" fill="#1f2328">Huihui, RTX 3090 + RTX 5060 Ti · decode per prompt (tokens/s)</text>
 <rect x="0" y="28" width="12" height="12" rx="3" fill="#eb6834"/>
 <text x="18" y="38" font-size="13" fill="#59636e">UD-Q4_K_XL</text>
-<rect x="114.0" y="28" width="12" height="12" rx="3" fill="#4a3aa7"/>
-<text x="132.0" y="38" font-size="13" fill="#59636e">Q8_0</text>
-<line x1="180.0" y1="52" x2="180.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
-<text x="180.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">0</text>
-<line x1="266.7" y1="52" x2="266.7" y2="338" stroke="#d1d9e0" stroke-width="1"/>
-<text x="266.7" y="354" font-size="11" fill="#59636e" text-anchor="middle">25</text>
-<line x1="353.3" y1="52" x2="353.3" y2="338" stroke="#d1d9e0" stroke-width="1"/>
-<text x="353.3" y="354" font-size="11" fill="#59636e" text-anchor="middle">50</text>
-<line x1="440.0" y1="52" x2="440.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
-<text x="440.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">75</text>
-<line x1="526.7" y1="52" x2="526.7" y2="338" stroke="#d1d9e0" stroke-width="1"/>
-<text x="526.7" y="354" font-size="11" fill="#59636e" text-anchor="middle">100</text>
-<line x1="613.3" y1="52" x2="613.3" y2="338" stroke="#d1d9e0" stroke-width="1"/>
-<text x="613.3" y="354" font-size="11" fill="#59636e" text-anchor="middle">125</text>
-<line x1="700.0" y1="52" x2="700.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
-<text x="700.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">150</text>
-<text x="170" y="77.5" font-size="13" fill="#1f2328" text-anchor="end">Spanish chat</text>
+<rect x="114.0" y="28" width="12" height="12" rx="3" fill="#14958f"/>
+<text x="132.0" y="38" font-size="13" fill="#59636e">UD-Q6_K_XL</text>
+<rect x="228.0" y="28" width="12" height="12" rx="3" fill="#4a3aa7"/>
+<text x="246.0" y="38" font-size="13" fill="#59636e">Q8_0</text>
+<line x1="180.0" y1="52" x2="180.0" y2="434" stroke="#d1d9e0" stroke-width="1"/>
+<text x="180.0" y="450" font-size="11" fill="#59636e" text-anchor="middle">0</text>
+<line x1="266.7" y1="52" x2="266.7" y2="434" stroke="#d1d9e0" stroke-width="1"/>
+<text x="266.7" y="450" font-size="11" fill="#59636e" text-anchor="middle">25</text>
+<line x1="353.3" y1="52" x2="353.3" y2="434" stroke="#d1d9e0" stroke-width="1"/>
+<text x="353.3" y="450" font-size="11" fill="#59636e" text-anchor="middle">50</text>
+<line x1="440.0" y1="52" x2="440.0" y2="434" stroke="#d1d9e0" stroke-width="1"/>
+<text x="440.0" y="450" font-size="11" fill="#59636e" text-anchor="middle">75</text>
+<line x1="526.7" y1="52" x2="526.7" y2="434" stroke="#d1d9e0" stroke-width="1"/>
+<text x="526.7" y="450" font-size="11" fill="#59636e" text-anchor="middle">100</text>
+<line x1="613.3" y1="52" x2="613.3" y2="434" stroke="#d1d9e0" stroke-width="1"/>
+<text x="613.3" y="450" font-size="11" fill="#59636e" text-anchor="middle">125</text>
+<line x1="700.0" y1="52" x2="700.0" y2="434" stroke="#d1d9e0" stroke-width="1"/>
+<text x="700.0" y="450" font-size="11" fill="#59636e" text-anchor="middle">150</text>
+<text x="170" y="85.5" font-size="13" fill="#1f2328" text-anchor="end">Spanish chat</text>
 <path d="M180.0,58.0 h261.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-261.2 z" fill="#eb6834"/>
 <text x="451.2" y="69" font-size="12" fill="#59636e">76.5</text>
-<path d="M180.0,74.0 h133.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-133.3 z" fill="#4a3aa7"/>
-<text x="323.3" y="85" font-size="12" fill="#59636e">39.6</text>
-<text x="170" y="123.5" font-size="13" fill="#1f2328" text-anchor="end">Reasoning</text>
-<path d="M180.0,104.0 h325.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-325.3 z" fill="#eb6834"/>
-<text x="515.3" y="115" font-size="12" fill="#59636e">95.0</text>
-<path d="M180.0,120.0 h149.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-149.9 z" fill="#4a3aa7"/>
-<text x="339.9" y="131" font-size="12" fill="#59636e">44.4</text>
-<text x="170" y="169.5" font-size="13" fill="#1f2328" text-anchor="end">After an 18K document</text>
-<path d="M180.0,150.0 h264.7 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-264.7 z" fill="#eb6834"/>
-<text x="454.7" y="161" font-size="12" fill="#59636e">77.5</text>
-<path d="M180.0,166.0 h147.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-147.5 z" fill="#4a3aa7"/>
-<text x="337.5" y="177" font-size="12" fill="#59636e">43.7</text>
-<text x="170" y="215.5" font-size="13" fill="#1f2328" text-anchor="end">Code</text>
-<path d="M180.0,196.0 h307.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-307.3 z" fill="#eb6834"/>
-<text x="497.3" y="207" font-size="12" fill="#59636e">89.8</text>
-<path d="M180.0,212.0 h139.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-139.9 z" fill="#4a3aa7"/>
-<text x="329.9" y="223" font-size="12" fill="#59636e">41.5</text>
-<text x="170" y="261.5" font-size="13" fill="#1f2328" text-anchor="end">Edit (3.3K script)</text>
-<path d="M180.0,242.0 h450.1 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-450.1 z" fill="#eb6834"/>
-<text x="640.1" y="253" font-size="12" fill="#59636e">131.0</text>
-<path d="M180.0,258.0 h139.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-139.5 z" fill="#4a3aa7"/>
-<text x="329.5" y="269" font-size="12" fill="#59636e">41.4</text>
-<text x="170" y="307.5" font-size="13" fill="#1f2328" text-anchor="end">After a 5K prompt</text>
-<path d="M180.0,288.0 h182.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-182.2 z" fill="#eb6834"/>
-<text x="372.2" y="299" font-size="12" fill="#59636e">53.7</text>
-<path d="M180.0,304.0 h137.4 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-137.4 z" fill="#4a3aa7"/>
-<text x="327.4" y="315" font-size="12" fill="#59636e">40.8</text></svg>
+<path d="M180.0,74.0 h204.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-204.0 z" fill="#14958f"/>
+<text x="394.0" y="85" font-size="12" fill="#59636e">60.0</text>
+<path d="M180.0,90.0 h133.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-133.3 z" fill="#4a3aa7"/>
+<text x="323.3" y="101" font-size="12" fill="#59636e">39.6</text>
+<text x="170" y="147.5" font-size="13" fill="#1f2328" text-anchor="end">Reasoning</text>
+<path d="M180.0,120.0 h325.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-325.3 z" fill="#eb6834"/>
+<text x="515.3" y="131" font-size="12" fill="#59636e">95.0</text>
+<path d="M180.0,136.0 h202.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-202.3 z" fill="#14958f"/>
+<text x="392.3" y="147" font-size="12" fill="#59636e">59.5</text>
+<path d="M180.0,152.0 h149.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-149.9 z" fill="#4a3aa7"/>
+<text x="339.9" y="163" font-size="12" fill="#59636e">44.4</text>
+<text x="170" y="209.5" font-size="13" fill="#1f2328" text-anchor="end">After an 18K document</text>
+<path d="M180.0,182.0 h264.7 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-264.7 z" fill="#eb6834"/>
+<text x="454.7" y="193" font-size="12" fill="#59636e">77.5</text>
+<path d="M180.0,198.0 h183.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-183.2 z" fill="#14958f"/>
+<text x="373.2" y="209" font-size="12" fill="#59636e">54.0</text>
+<path d="M180.0,214.0 h147.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-147.5 z" fill="#4a3aa7"/>
+<text x="337.5" y="225" font-size="12" fill="#59636e">43.7</text>
+<text x="170" y="271.5" font-size="13" fill="#1f2328" text-anchor="end">Code</text>
+<path d="M180.0,244.0 h307.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-307.3 z" fill="#eb6834"/>
+<text x="497.3" y="255" font-size="12" fill="#59636e">89.8</text>
+<path d="M180.0,260.0 h183.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-183.9 z" fill="#14958f"/>
+<text x="373.9" y="271" font-size="12" fill="#59636e">54.2</text>
+<path d="M180.0,276.0 h139.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-139.9 z" fill="#4a3aa7"/>
+<text x="329.9" y="287" font-size="12" fill="#59636e">41.5</text>
+<text x="170" y="333.5" font-size="13" fill="#1f2328" text-anchor="end">Edit (3.3K script)</text>
+<path d="M180.0,306.0 h450.1 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-450.1 z" fill="#eb6834"/>
+<text x="640.1" y="317" font-size="12" fill="#59636e">131.0</text>
+<path d="M180.0,322.0 h215.1 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-215.1 z" fill="#14958f"/>
+<text x="405.1" y="333" font-size="12" fill="#59636e">63.2</text>
+<path d="M180.0,338.0 h139.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-139.5 z" fill="#4a3aa7"/>
+<text x="329.5" y="349" font-size="12" fill="#59636e">41.4</text>
+<text x="170" y="395.5" font-size="13" fill="#1f2328" text-anchor="end">After a 5K prompt</text>
+<path d="M180.0,368.0 h182.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-182.2 z" fill="#eb6834"/>
+<text x="372.2" y="379" font-size="12" fill="#59636e">53.7</text>
+<path d="M180.0,384.0 h156.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-156.9 z" fill="#14958f"/>
+<text x="346.9" y="395" font-size="12" fill="#59636e">46.4</text>
+<path d="M180.0,400.0 h137.4 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-137.4 z" fill="#4a3aa7"/>
+<text x="327.4" y="411" font-size="12" fill="#59636e">40.8</text></svg>

@@ -15,10 +15,10 @@ FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,
 THEME = {
     "light": {"ink": "#1f2328", "ink2": "#59636e", "grid": "#d1d9e0", "one": "#97c425", "two": "#1b9247",
               "single": "#1b9247", "m1": "#2a78d6", "m2": "#eb6834", "r128": "#4a3aa7", "r64": "#eda100", "surface": "#ffffff",
-              "hq4": "#eb6834", "hq8": "#4a3aa7"},
+              "hq4": "#eb6834", "hq6": "#14958f", "hq8": "#4a3aa7"},
     "dark": {"ink": "#f0f6fc", "ink2": "#9198a1", "grid": "#3d444d", "one": "#79a200", "two": "#00762c",
              "single": "#00762c", "m1": "#3987e5", "m2": "#d95926", "r128": "#9085e9", "r64": "#c98500", "surface": "#0d1117",
-             "hq4": "#d95926", "hq8": "#9085e9"},
+             "hq4": "#d95926", "hq6": "#2aa198", "hq8": "#9085e9"},
 }
 GPU = [("one", "RTX 3090"), ("two", "RTX 3090 + RTX 5060 Ti")]
 
@@ -49,12 +49,18 @@ LONG_CATS = ["after 32K tokens", "after 64K", "after 120K", "after 200K"]
 LONG_DEC_Q4 = {"one": [58.6, 77.0, 48.4, 41.6], "two": [83.0, 90.0, 69.8, 74.0]}
 LONG_DEC = {"one": [73.5, 93.6, 66.2, 60.0], "two": [94.7, 99.9, 98.1, 97.3]}
 # huihui-ai's abliterated Flash-Next on both cards: UD-Q4_K_XL against Q8_0 with 11 + 11 GiB of experts only in VRAM
-# (2026-10-10, the current engine; decode two runs each, prompt reading the median of four (UD-Q4_K_XL) and of eight
-# (Q8_0) runs; the long prompts one run each)
-HQ = [("hq4", "UD-Q4_K_XL"), ("hq8", "Q8_0")]
-HQ_DECODE = {"hq4": [76.5, 95.0, 77.5, 89.8, 131.0, 53.7], "hq8": [39.6, 44.4, 43.7, 41.5, 41.4, 40.8]}
-HQ_PREFILL = {"hq4": [1782, 1120, 808], "hq8": [1330, 610, 426]}
-HQ_LONG = {"hq4": [76.1, 92.3, 74.8, 71.0], "hq8": [40.0, 46.6, 33.5, 40.4]}   # decode right after the long prompts
+# and UD-Q6_K_XL (made here from the Q8_0) with 6 + 6 GiB (2026-10-10, the current engine; decode two runs each, three
+# for UD-Q6_K_XL; prompt reading the median of four (UD-Q4_K_XL), three (UD-Q6_K_XL) and eight (Q8_0) runs; the long
+# prompts one run each, two for UD-Q6_K_XL)
+HQ = [("hq4", "UD-Q4_K_XL"), ("hq6", "UD-Q6_K_XL"), ("hq8", "Q8_0")]
+HQ_DECODE = {"hq4": [76.5, 95.0, 77.5, 89.8, 131.0, 53.7], "hq6": [60.0, 59.5, 54.0, 54.2, 63.2, 46.4],
+             "hq8": [39.6, 44.4, 43.7, 41.5, 41.4, 40.8]}
+HQ_PREFILL = {"hq4": [1782, 1120, 808], "hq6": [1457, 728, 518], "hq8": [1330, 610, 426]}
+HQ_LONG = {"hq4": [76.1, 92.3, 74.8, 71.0], "hq6": [51.9, 65.1, 41.7, 51.9],
+           "hq8": [40.0, 46.6, 33.5, 40.4]}   # decode right after the long prompts
+# KL divergence from Q8_0 (x 1000), teacher-forced over 19,208 tokens (Spanish, English docs, C++ and Python code)
+KL_BIG = [("Q8_0, run again", 21.2), ("UD-Q6_K_XL", 17.7), ("Huihui UD-Q4_K_XL", 64.1),
+          ("unsloth UD-Q4_K_XL (not abliterated)", 40.6)]
 # KL divergence from Q8_0 (x 1000), teacher-forced over 2,304 tokens of held-out Spanish text
 KL = [("Q8_0, run again", 5.6), ("Q8_0 + route-resident 0.1", 13.6), ("Q8_0 + route-resident 0.25", 23.5),
       ("Q8_0 + route-resident 0.5", 37.5), ("UD-Q4_K_XL", 28.2)]
@@ -194,18 +200,22 @@ def main():
                 "p", PREFILL_LABELS, [(k, s, PREFILL64[m][k]) for k, s in GPU], f"{nm} prompt reading with 64 GB of RAM", t,
                 vmax=max(PREFILL["iq4"]["two"]), dec=0, lab_w=120, title=f"{nm} · prompt reading, 64 GB of RAM (tokens/s)")
         charts["q8-decode"] = grouped("d", PROMPTS, [(k, s, HQ_DECODE[k]) for k, s in HQ],
-                                      "Huihui decode per prompt on both cards: UD-Q4_K_XL vs Q8_0", t,
+                                      "Huihui decode per prompt on both cards: UD-Q4_K_XL, UD-Q6_K_XL and Q8_0", t,
                                       title="Huihui, RTX 3090 + RTX 5060 Ti · decode per prompt (tokens/s)")
         charts["q8-prefill"] = grouped("p", PREFILL_LABELS, [(k, s, HQ_PREFILL[k]) for k, s in HQ],
-                                       "Huihui prompt reading on both cards: UD-Q4_K_XL vs Q8_0", t, dec=0, lab_w=120,
+                                       "Huihui prompt reading on both cards: UD-Q4_K_XL, UD-Q6_K_XL and Q8_0", t, dec=0, lab_w=120,
                                        title="Huihui, RTX 3090 + RTX 5060 Ti · prompt reading (tokens/s)")
         if HQ_LONG:
             charts["q8-longctx"] = grouped("l", LONG_CATS, [(k, s, HQ_LONG[k]) for k, s in HQ],
-                                           "Huihui decode right after a long prompt: UD-Q4_K_XL vs Q8_0", t, lab_w=150,
+                                           "Huihui decode right after a long prompt: UD-Q4_K_XL, UD-Q6_K_XL and Q8_0", t, lab_w=150,
                                            title="Huihui, both cards · decode right after a long prompt (tokens/s)")
         charts["q8-quality"] = grouped("k", [c for c, _ in KL], [("single", "", [v for _, v in KL])],
                                        "KL divergence from Q8_0 (x 1000): a second Q8_0 run, route-resident, UD-Q4_K_XL",
                                        t, lab_w=230, title="KL divergence from Q8_0, x 1000 (lower = closer to Q8_0)")
+        charts["q6-quality"] = grouped("k", [c for c, _ in KL_BIG], [("single", "", [v for _, v in KL_BIG])],
+                                       "KL divergence from Q8_0 (x 1000) over 19,208 teacher-forced tokens: a second Q8_0 run, "
+                                       "UD-Q6_K_XL, Huihui's and unsloth's UD-Q4_K_XL", t, lab_w=270,
+                                       title="KL divergence from Q8_0 over 19,208 tokens, x 1000 (lower = closer)")
         if RAM64:
             charts["ram64"] = grouped("r", RAM_CATS, [("r128", "128 GB", RAM64["128"]), ("r64", "64 GB", RAM64["64"])],
                                       "Decode speed with 128 GB and with 64 GB of RAM", t, lab_w=210, vmax=135)
