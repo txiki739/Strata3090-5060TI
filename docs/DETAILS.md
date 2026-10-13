@@ -143,7 +143,8 @@ the same file as upstream's `--draft-vocab en`). Upstream's default since 0.1.27
 Korean token (106,299 ids): answers in those languages 15-38% faster, English answers 1-2% slower, and its head takes
 ~110 MiB more VRAM. Setup's `--draft-vocab cyrillic` (58,963 ids: the English/code subset and the Cyrillic
 script) and `--draft-vocab fr` (46,211 ids: and the tokens of 99% of a French corpus) are upstream's too.
-`tools/draft_vocab.py` builds and inspects subsets.
+`data/draft_vocab_es.bin` adds the tokens of Spanish text (47,196 ids; the configs in `examples/r7-5700x` use it,
+in `mtp/rt-es`): Spanish drafts 68% -> 75% accepted. `tools/draft_vocab.py` builds and inspects subsets.
 
 **Low-RAM mode (engine 0.1.26, chosen by setup):** normally all of a model's experts are copied into RAM (23-50 GB,
 pinned) and the GPU holds a copy of the most-used ones. On a PC whose RAM cannot hold them beside the system (the

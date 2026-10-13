@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="268" viewBox="0 0 760 268" role="img" aria-label="UD-IQ4_XS decode right after a long prompt" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<title>UD-IQ4_XS decode right after a long prompt</title>
+<text x="0" y="16" font-size="15" font-weight="600" fill="#f0f6fc">UD-IQ4_XS · decode right after a long prompt (tokens/s)</text>
+<rect x="0" y="28" width="12" height="12" rx="3" fill="#79a200"/>
+<text x="18" y="38" font-size="13" fill="#9198a1">RTX 3090</text>
+<rect x="99.2" y="28" width="12" height="12" rx="3" fill="#00762c"/>
+<text x="117.2" y="38" font-size="13" fill="#9198a1">RTX 3090 + RTX 5060 Ti</text>
+<line x1="150.0" y1="52" x2="150.0" y2="246" stroke="#3d444d" stroke-width="1"/>
+<text x="150.0" y="262" font-size="11" fill="#9198a1" text-anchor="middle">0</text>
+<line x1="260.0" y1="52" x2="260.0" y2="246" stroke="#3d444d" stroke-width="1"/>
+<text x="260.0" y="262" font-size="11" fill="#9198a1" text-anchor="middle">20</text>
+<line x1="370.0" y1="52" x2="370.0" y2="246" stroke="#3d444d" stroke-width="1"/>
+<text x="370.0" y="262" font-size="11" fill="#9198a1" text-anchor="middle">40</text>
+<line x1="480.0" y1="52" x2="480.0" y2="246" stroke="#3d444d" stroke-width="1"/>
+<text x="480.0" y="262" font-size="11" fill="#9198a1" text-anchor="middle">60</text>
+<line x1="590.0" y1="52" x2="590.0" y2="246" stroke="#3d444d" stroke-width="1"/>
+<text x="590.0" y="262" font-size="11" fill="#9198a1" text-anchor="middle">80</text>
+<line x1="700.0" y1="52" x2="700.0" y2="246" stroke="#3d444d" stroke-width="1"/>
+<text x="700.0" y="262" font-size="11" fill="#9198a1" text-anchor="middle">100</text>
+<text x="140" y="77.5" font-size="13" fill="#f0f6fc" text-anchor="end">after 32K tokens</text>
+<path d="M150.0,58.0 h400.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-400.2 z" fill="#79a200"/>
+<text x="560.2" y="69" font-size="12" fill="#9198a1">73.5</text>
+<path d="M150.0,74.0 h516.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-516.9 z" fill="#00762c"/>
+<text x="676.9" y="85" font-size="12" fill="#9198a1">94.7</text>
+<text x="140" y="123.5" font-size="13" fill="#f0f6fc" text-anchor="end">after 64K</text>
+<path d="M150.0,104.0 h510.8 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-510.8 z" fill="#79a200"/>
+<text x="670.8" y="115" font-size="12" fill="#9198a1">93.6</text>
+<path d="M150.0,120.0 h545.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-545.5 z" fill="#00762c"/>
+<text x="705.5" y="131" font-size="12" fill="#9198a1">99.9</text>
+<text x="140" y="169.5" font-size="13" fill="#f0f6fc" text-anchor="end">after 120K</text>
+<path d="M150.0,150.0 h360.1 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-360.1 z" fill="#79a200"/>
+<text x="520.1" y="161" font-size="12" fill="#9198a1">66.2</text>
+<path d="M150.0,166.0 h535.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-535.5 z" fill="#00762c"/>
+<text x="695.5" y="177" font-size="12" fill="#9198a1">98.1</text>
+<text x="140" y="215.5" font-size="13" fill="#f0f6fc" text-anchor="end">after 200K</text>
+<path d="M150.0,196.0 h326.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-326.0 z" fill="#79a200"/>
+<text x="486.0" y="207" font-size="12" fill="#9198a1">60.0</text>
+<path d="M150.0,212.0 h531.1 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-531.1 z" fill="#00762c"/>
+<text x="691.1" y="223" font-size="12" fill="#9198a1">97.3</text></svg>

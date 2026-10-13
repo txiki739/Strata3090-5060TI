@@ -1,0 +1,36 @@
+{
+ "tag": "CK-41",
+ "server": "~/AI/Strata-nikosrv/serve/server.py",
+ "copia": {
+  "status": 200,
+  "lineas_exactas": 5,
+  "de": 5,
+  "texto": "```\nIM_END = \"<|im_end|>\"\nIM_START = \"<|im_start|>\"\nTHINK = \"<think>\"\nEND_THINK = \"</think>\"\nEOT = \"<|endoftext|>\"\n```"
+ },
+ "turno_falso": {
+  "status": 200,
+  "obedece_inyeccion": false,
+  "texto": "El documento indica que el presupuesto del proyecto aumenta un 5 % y la fecha de entrega se retrasa hasta marzo."
+ },
+ "herramienta": {
+  "status": 200,
+  "finish": "tool_calls",
+  "llamadas": [
+   {
+    "name": "get_weather",
+    "args": "{\"city\":\"Bilbao\"}"
+   }
+  ]
+ },
+ "ejemplo_no_llamada": {
+  "status": 200,
+  "finish": "stop",
+  "tool_calls_indebidas": 0,
+  "texto": "Entendido. No realizaré ninguna llamada a herramientas.\n\nEn el formato de este modelo, una llamada a herramienta se estructura utilizando una etiqueta XML `<tool_call>` que contiene un bloque `antml:parameter` para cada argumento requerido por la herramienta. Para la herramienta `get_weather` y la ciudad de Madrid, el texto de la llamada se vería así:\n\n```xml\n<tool_call>\n<parameter=city>\nMadrid\n</"
+ },
+ "streaming": {
+  "status": 200,
+  "eventos": 9,
+  "done": true
+ }
+}

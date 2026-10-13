@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="244" viewBox="0 0 760 244" role="img" aria-label="Decode speed with 128 GB and with 64 GB of RAM" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<title>Decode speed with 128 GB and with 64 GB of RAM</title>
+
+<rect x="0" y="4" width="12" height="12" rx="3" fill="#4a3aa7"/>
+<text x="18" y="14" font-size="13" fill="#59636e">128 GB</text>
+<rect x="84.4" y="4" width="12" height="12" rx="3" fill="#eda100"/>
+<text x="102.4" y="14" font-size="13" fill="#59636e">64 GB</text>
+<line x1="210.0" y1="28" x2="210.0" y2="222" stroke="#d1d9e0" stroke-width="1"/>
+<text x="210.0" y="238" font-size="11" fill="#59636e" text-anchor="middle">0</text>
+<line x1="291.7" y1="28" x2="291.7" y2="222" stroke="#d1d9e0" stroke-width="1"/>
+<text x="291.7" y="238" font-size="11" fill="#59636e" text-anchor="middle">25</text>
+<line x1="373.3" y1="28" x2="373.3" y2="222" stroke="#d1d9e0" stroke-width="1"/>
+<text x="373.3" y="238" font-size="11" fill="#59636e" text-anchor="middle">50</text>
+<line x1="455.0" y1="28" x2="455.0" y2="222" stroke="#d1d9e0" stroke-width="1"/>
+<text x="455.0" y="238" font-size="11" fill="#59636e" text-anchor="middle">75</text>
+<line x1="536.7" y1="28" x2="536.7" y2="222" stroke="#d1d9e0" stroke-width="1"/>
+<text x="536.7" y="238" font-size="11" fill="#59636e" text-anchor="middle">100</text>
+<line x1="618.3" y1="28" x2="618.3" y2="222" stroke="#d1d9e0" stroke-width="1"/>
+<text x="618.3" y="238" font-size="11" fill="#59636e" text-anchor="middle">125</text>
+<line x1="700.0" y1="28" x2="700.0" y2="222" stroke="#d1d9e0" stroke-width="1"/>
+<text x="700.0" y="238" font-size="11" fill="#59636e" text-anchor="middle">150</text>
+<text x="200" y="53.5" font-size="13" fill="#1f2328" text-anchor="end">UD-IQ4_XS · RTX 3090</text>
+<path d="M210.0,34.0 h299.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-299.5 z" fill="#4a3aa7"/>
+<text x="519.5" y="45" font-size="12" fill="#59636e">92.9</text>
+<path d="M210.0,50.0 h298.8 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-298.8 z" fill="#eda100"/>
+<text x="518.8" y="61" font-size="12" fill="#59636e">92.7</text>
+<text x="200" y="99.5" font-size="13" fill="#1f2328" text-anchor="end">UD-IQ4_XS · 3090 + 5060 Ti</text>
+<path d="M210.0,80.0 h375.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-375.9 z" fill="#4a3aa7"/>
+<text x="595.9" y="91" font-size="12" fill="#59636e">116.3</text>
+<path d="M210.0,96.0 h374.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-374.0 z" fill="#eda100"/>
+<text x="594.0" y="107" font-size="12" fill="#59636e">115.7</text>
+<text x="200" y="145.5" font-size="13" fill="#1f2328" text-anchor="end">UD-Q4_K_XL · RTX 3090</text>
+<path d="M210.0,126.0 h228.6 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-228.6 z" fill="#4a3aa7"/>
+<text x="448.6" y="137" font-size="12" fill="#59636e">71.2</text>
+<path d="M210.0,142.0 h80.6 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-80.6 z" fill="#eda100"/>
+<text x="300.6" y="153" font-size="12" fill="#59636e">25.9</text>
+<text x="200" y="191.5" font-size="13" fill="#1f2328" text-anchor="end">UD-Q4_K_XL · 3090 + 5060 Ti</text>
+<path d="M210.0,172.0 h273.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-273.3 z" fill="#4a3aa7"/>
+<text x="493.3" y="183" font-size="12" fill="#59636e">84.9</text>
+<path d="M210.0,188.0 h125.7 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-125.7 z" fill="#eda100"/>
+<text x="345.7" y="199" font-size="12" fill="#59636e">39.7</text></svg>

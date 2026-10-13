@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="264" viewBox="0 0 760 264" role="img" aria-label="KL divergence from Q8_0 (x 1000): a second Q8_0 run, UD-Q6_K_XL, route-resident, UD-Q4_K_XL" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<title>KL divergence from Q8_0 (x 1000): a second Q8_0 run, UD-Q6_K_XL, route-resident, UD-Q4_K_XL</title>
+<text x="0" y="16" font-size="15" font-weight="600" fill="#1f2328">KL divergence from Q8_0, x 1000 (lower = closer to Q8_0)</text>
+
+<line x1="230.0" y1="52" x2="230.0" y2="242" stroke="#d1d9e0" stroke-width="1"/>
+<text x="230.0" y="258" font-size="11" fill="#59636e" text-anchor="middle">0</text>
+<line x1="347.5" y1="52" x2="347.5" y2="242" stroke="#d1d9e0" stroke-width="1"/>
+<text x="347.5" y="258" font-size="11" fill="#59636e" text-anchor="middle">10</text>
+<line x1="465.0" y1="52" x2="465.0" y2="242" stroke="#d1d9e0" stroke-width="1"/>
+<text x="465.0" y="258" font-size="11" fill="#59636e" text-anchor="middle">20</text>
+<line x1="582.5" y1="52" x2="582.5" y2="242" stroke="#d1d9e0" stroke-width="1"/>
+<text x="582.5" y="258" font-size="11" fill="#59636e" text-anchor="middle">30</text>
+<line x1="700.0" y1="52" x2="700.0" y2="242" stroke="#d1d9e0" stroke-width="1"/>
+<text x="700.0" y="258" font-size="11" fill="#59636e" text-anchor="middle">40</text>
+<text x="220" y="69.5" font-size="13" fill="#1f2328" text-anchor="end">Q8_0, run again</text>
+<path d="M230.0,58.0 h61.8 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-61.8 z" fill="#1b9247"/>
+<text x="301.8" y="69" font-size="12" fill="#59636e">5.6</text>
+<text x="220" y="99.5" font-size="13" fill="#1f2328" text-anchor="end">UD-Q6_K_XL</text>
+<path d="M230.0,88.0 h78.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-78.2 z" fill="#1b9247"/>
+<text x="318.2" y="99" font-size="12" fill="#59636e">7.0</text>
+<text x="220" y="129.5" font-size="13" fill="#1f2328" text-anchor="end">Q8_0 + route-resident 0.1</text>
+<path d="M230.0,118.0 h155.8 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-155.8 z" fill="#1b9247"/>
+<text x="395.8" y="129" font-size="12" fill="#59636e">13.6</text>
+<text x="220" y="159.5" font-size="13" fill="#1f2328" text-anchor="end">Q8_0 + route-resident 0.25</text>
+<path d="M230.0,148.0 h272.1 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-272.1 z" fill="#1b9247"/>
+<text x="512.1" y="159" font-size="12" fill="#59636e">23.5</text>
+<text x="220" y="189.5" font-size="13" fill="#1f2328" text-anchor="end">Q8_0 + route-resident 0.5</text>
+<path d="M230.0,178.0 h436.6 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-436.6 z" fill="#1b9247"/>
+<text x="676.6" y="189" font-size="12" fill="#59636e">37.5</text>
+<text x="220" y="219.5" font-size="13" fill="#1f2328" text-anchor="end">UD-Q4_K_XL</text>
+<path d="M230.0,208.0 h327.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-327.3 z" fill="#1b9247"/>
+<text x="567.3" y="219" font-size="12" fill="#59636e">28.2</text></svg>

@@ -1,0 +1,286 @@
+{
+ "tag": "QE-H6D",
+ "num": [
+  {
+   "q": "Un tren sale a las 9:15 y llega a las 13:40. ¿Cuántos minutos dura el viaje?",
+   "want": "265",
+   "got": "265",
+   "ok": true,
+   "finish": "stop",
+   "s": 6.3,
+   "tokens": 209
+  },
+  {
+   "q": "Si 3 bolígrafos cuestan 4,50 € y 2 cuadernos cuestan 7 €, ¿cuántos euros cuestan 5 bolígrafos y 3 cuadernos?",
+   "want": "18",
+   "got": "18,00 €",
+   "ok": true,
+   "finish": "stop",
+   "s": 9.2,
+   "tokens": 397
+  },
+  {
+   "q": "Un depósito de 1200 litros se llena con un grifo de 25 L/min mientras un desagüe abierto vacía 10 L/min. Empezando vacío, ¿cuántos minutos tarda en llenarse?",
+   "want": "80",
+   "got": "80",
+   "ok": true,
+   "finish": "stop",
+   "s": 4.3,
+   "tokens": 125
+  },
+  {
+   "q": "La suma de tres números enteros consecutivos es 147. ¿Cuál es el mayor de los tres?",
+   "want": "50",
+   "got": "50",
+   "ok": true,
+   "finish": "stop",
+   "s": 7.2,
+   "tokens": 284
+  },
+  {
+   "q": "¿Cuántos números enteros entre 1 y 1000, ambos incluidos, son divisibles por 3 o por 5?",
+   "want": "467",
+   "got": "467",
+   "ok": true,
+   "finish": "stop",
+   "s": 8.2,
+   "tokens": 303
+  },
+  {
+   "q": "Un producto cuesta 80 €. Su precio sube un 25 % y después baja un 20 %. ¿Cuál es el precio final en euros?",
+   "want": "80",
+   "got": "80",
+   "ok": true,
+   "finish": "stop",
+   "s": 5.2,
+   "tokens": 182
+  },
+  {
+   "q": "María tiene el triple de edad que su hijo. Dentro de 12 años tendrá el doble que él. ¿Cuántos años tiene María ahora?",
+   "want": "36",
+   "got": "36",
+   "ok": true,
+   "finish": "stop",
+   "s": 7.3,
+   "tokens": 274
+  },
+  {
+   "q": "¿Cuál es el resto de dividir 2 elevado a 100 entre 7?",
+   "want": "2",
+   "got": "2",
+   "ok": true,
+   "finish": "stop",
+   "s": 7.6,
+   "tokens": 321
+  },
+  {
+   "q": "¿Cuántas diagonales tiene un polígono convexo de 12 lados?",
+   "want": "54",
+   "got": "54",
+   "ok": true,
+   "finish": "stop",
+   "s": 4.8,
+   "tokens": 171
+  },
+  {
+   "q": "Un coche consume 6,5 litros cada 100 km. ¿Cuántos litros gasta en 340 km?",
+   "want": "22.1",
+   "got": "22,1",
+   "ok": true,
+   "finish": "stop",
+   "s": 5.0,
+   "tokens": 198
+  },
+  {
+   "q": "En una clase de 30 alumnos, 18 juegan al fútbol, 12 al baloncesto y 7 a ambos deportes. ¿Cuántos no juegan a ninguno?",
+   "want": "7",
+   "got": "7",
+   "ok": true,
+   "finish": "stop",
+   "s": 6.0,
+   "tokens": 179
+  },
+  {
+   "q": "¿De cuántas formas distintas se pueden ordenar las letras de la palabra BANANA?",
+   "want": "60",
+   "got": "60",
+   "ok": true,
+   "finish": "stop",
+   "s": 5.9,
+   "tokens": 239
+  },
+  {
+   "q": "¿Cuánto vale la suma de todos los números impares del 1 al 200?",
+   "want": "10000",
+   "got": "10000",
+   "ok": true,
+   "finish": "stop",
+   "s": 6.2,
+   "tokens": 276
+  },
+  {
+   "q": "¿Cuál es el menor entero positivo mayor que 3 que al dividirlo entre 4, entre 5 y entre 6 deja resto 3 en los tres casos?",
+   "want": "63",
+   "got": "63",
+   "ok": true,
+   "finish": "stop",
+   "s": 8.8,
+   "tokens": 351
+  },
+  {
+   "q": "Un rectángulo tiene 46 cm de perímetro y su diagonal mide 17 cm. ¿Cuál es su área en centímetros cuadrados?",
+   "want": "120",
+   "got": "120",
+   "ok": true,
+   "finish": "stop",
+   "s": 8.9,
+   "tokens": 380
+  },
+  {
+   "q": "Se lanzan dos dados de seis caras. De los 36 resultados posibles, ¿en cuántos la suma es 8?",
+   "want": "5",
+   "got": "5",
+   "ok": true,
+   "finish": "stop",
+   "s": 4.9,
+   "tokens": 161
+  },
+  {
+   "q": "¿Qué ángulo en grados forman las agujas de un reloj analógico a las 3:20?",
+   "want": "20",
+   "got": "20",
+   "ok": true,
+   "finish": "stop",
+   "s": 10.6,
+   "tokens": 498
+  },
+  {
+   "q": "Hoy es miércoles. ¿Qué día de la semana será dentro de 100 días? (responde con el nombre del día)",
+   "want": "viernes",
+   "got": "viernes",
+   "ok": true,
+   "finish": "stop",
+   "s": 4.9,
+   "tokens": 206
+  },
+  {
+   "q": "Un número de dos cifras cumple que la suma de sus cifras es 11 y que, si se invierten sus cifras, el número aumenta en 27. ¿Cuál es el número?",
+   "want": "47",
+   "got": "47",
+   "ok": true,
+   "finish": "stop",
+   "s": 9.2,
+   "tokens": 385
+  },
+  {
+   "q": "¿Con cuántos ceros termina el número 50! (factorial de 50)?",
+   "want": "12",
+   "got": "12",
+   "ok": true,
+   "finish": "stop",
+   "s": 7.5,
+   "tokens": 329
+  },
+  {
+   "q": "Ana es más alta que Beatriz. Carla es más baja que Beatriz. Daniela es más alta que Ana. ¿Quién es la segunda persona más alta? (responde con el nombre)",
+   "want": "ana",
+   "got": "Ana",
+   "ok": true,
+   "finish": "stop",
+   "s": 4.4,
+   "tokens": 141
+  },
+  {
+   "q": "En una carrera adelantas a la persona que va en segundo lugar. ¿En qué posición vas ahora? (responde con un número)",
+   "want": "2",
+   "got": "2",
+   "ok": true,
+   "finish": "stop",
+   "s": 3.5,
+   "tokens": 114
+  },
+  {
+   "q": "Si 5 máquinas fabrican 5 piezas en 5 minutos, ¿cuántos minutos tardan 100 máquinas en fabricar 100 piezas?",
+   "want": "5",
+   "got": "5",
+   "ok": true,
+   "finish": "stop",
+   "s": 5.1,
+   "tokens": 192
+  },
+  {
+   "q": "Un granjero tiene 17 ovejas y mueren todas menos 9. ¿Cuántas ovejas le quedan vivas?",
+   "want": "9",
+   "got": "9",
+   "ok": true,
+   "finish": "stop",
+   "s": 3.0,
+   "tokens": 97
+  }
+ ],
+ "code": [
+  {
+   "q": "Escribe una función Python `rotar(lista, k)` que devuelva la lista rotada k posiciones hacia la derecha (k puede ser mayor que la longitud y la lista puede estar vacía).",
+   "ok": true,
+   "why": [],
+   "code": "def rotar(lista, k):\n    if not lista:\n        return []\n\n    n = len(lista)\n    k %= n\n\n    if k == 0:\n        return lista[:]\n\n    return lista[-k:] + lista[:-k]\n",
+   "finish": "stop",
+   "s": 9.8,
+   "tokens": 399
+  },
+  {
+   "q": "Escribe una función Python `romano(n)` que convierta un entero entre 1 y 3999 a número romano.",
+   "ok": true,
+   "why": [],
+   "code": "def romano(n):\n    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= 3999:\n        raise ValueError(\"El número debe ser un entero entre 1 y 3999.\")\n\n    valores = [\n        (1000, \"M\"),\n        (900, \"CM\"),\n        (500, \"D\"),\n        (400, \"CD\"),\n        (100, \"C\"),\n        (90, \"XC\"),\n        (50, \"L\"),\n        (40, \"XL\"),\n        (10, \"X\"),\n        (9, \"IX\"),\n        (5, \"V\"),\n        (4, \"IV\"),\n        (1, \"I\"),\n    ]\n\n    resultado = []\n    for valor, simbolo in valores:\n        while n >= valor:\n            resultado.append(simbolo)\n            n -= valor\n\n    return \"\".join(resultado)\n",
+   "finish": "stop",
+   "s": 10.4,
+   "tokens": 424
+  },
+  {
+   "q": "Escribe una función Python `anagramas(a, b)` que diga si dos cadenas son anagramas, sin distinguir mayúsculas y sin tener en cuenta los espacios.",
+   "ok": true,
+   "why": [],
+   "code": "def anagramas(a, b):\n    a = a.replace(\" \", \"\").lower()\n    b = b.replace(\" \", \"\").lower()\n    return sorted(a) == sorted(b)\n",
+   "finish": "stop",
+   "s": 5.3,
+   "tokens": 202
+  },
+  {
+   "q": "Escribe una función Python `balanceado(s)` que diga si los paréntesis (), corchetes [] y llaves {} de la cadena están bien emparejados y anidados; los demás caracteres se ignoran.",
+   "ok": true,
+   "why": [],
+   "code": "def balanceado(s: str) -> bool:\n    pila = []\n    cierre = {')': '(', ']': '[', '}': '{'}\n\n    for caracter in s:\n        if caracter in '([{':\n            pila.append(caracter)\n        elif caracter in cierre:\n            if not pila or pila[-1] != cierre[caracter]:\n                return False\n            pila.pop()\n\n    return not pila\n",
+   "finish": "stop",
+   "s": 6.8,
+   "tokens": 279
+  }
+ ],
+ "open": [
+  {
+   "q": "Escribe un texto breve (unas 200 palabras) para explicar a una persona mayor qué es la inteligencia artificial, con un ejemplo cotidiano.",
+   "answer": "La inteligencia artificial es una parte de la informática que enseña a los ordenadores a hacer cosas que normalmente requieren la mente humana: reconocer una voz, entender una frase, aprender de experiencias o tomar pequeñas decisiones. No piensa como nosotros, pero puede repetir patrones muy rápido y mejorar cuando recibe muchos ejemplos.\n\nTambién puede estar en un cajero automático que detecta un error, en un correo que filtra mensajes molestos o en una televisión que le recomienda películas según lo que ha visto, sin darse cuenta a veces.\n\nPiense en el navegador del móvil que le sugiere una ruta para ir al médico. Usted dice: “Llévame al centro de salud”. El teléfono reconoce su voz, entiende lo que pide, consulta mapas, calcula el tráfico y le propone el camino más rápido. Eso es inteligencia artificial en acción: una herramienta que le ayuda a ahorrar tiempo y esfuerzo.\n\nNo es magia ni un robot que manda. Es una máquina programada para ayudar cada día, como una calculadora avanzada. Lo importante es usarla con calma y tranquilidad: si algo no le queda claro, puede preguntar, pedir ayuda o simplemente no usarla. La inteligencia artificial está para facilitarnos la vida, no para complicárnosla.",
+   "finish": "stop",
+   "s": 43.2,
+   "tokens": 2513
+  },
+  {
+   "q": "Explica qué diferencia hay entre un proceso y un hilo en un sistema operativo, y cuándo conviene usar cada uno.",
+   "answer": "Un **proceso** y un **hilo** son unidades de ejecución en un sistema operativo, pero tienen niveles distintos de aislamiento y recursos.\n\n## Proceso\n\nUn **proceso** es un programa en ejecución con su propio entorno de ejecución.\n\nCada proceso tiene, normalmente:\n\n- Su propio espacio de memoria.\n- Sus propios descriptores de archivo.\n- Su propio contexto de CPU.\n- Su propio identificador, PID.\n- Recursos asignados por el sistema operativo.\n\nLos procesos están **aislados** entre sí. Si un proceso falla, normalmente no afecta directamente a otros procesos.\n\nEjemplo:\n\n```text\nProceso A: navegador web\nProceso B: editor de texto\nProceso C: servidor web\n```\n\nCada uno puede ejecutarse sin compartir directamente su memoria con los demás.\n\n## Hilo\n\nUn **hilo** es una unidad de ejecución más ligera que vive dentro de un proceso.\n\nUn proceso puede tener uno o varios hilos. Los hilos de un mismo proceso comparten:\n\n- El espacio de memoria.\n- Las variables globales.\n- Los archivos abiertos.\n- El montón o heap.\n\nPero cada hilo tiene:\n\n- Su propia pila o stack.\n- Sus propios registros de CPU.\n- Su propio contador de programa.\n- Su propio estado de ejecución.\n\nEjemplo:\n\n```text\nProceso: navegador web\n    Hilo 1: interfaz gráfica\n    Hilo 2: descarga de archivos\n    Hilo 3: renderizado de página\n```\n\nTodos esos hilos pertenecen al mismo proceso y pueden compartir datos, pero deben sincronizarse correctamente.\n\n## Diferencias principales\n\n| Aspecto | Proceso | Hilo |\n|---|---|---|\n| Aislamiento | Alto | Bajo |\n| Memoria | Espacio propio | Compartida con otros hilos del proceso |\n| Coste de creación | Mayor | Menor |\n| Cambio de contexto | Más caro | Más barato |\n| Comunicación | Más compleja | Más sencilla, pero requiere sincronización |\n| Fallo | Afecta principalmente al proceso | Puede afectar a todo el proceso |\n| Uso típico | Aislar tareas | Paralelismo dentro de una aplicación |\n\n## Cuándo usar procesos\n\nConviene usar **procesos** cuando necesitas:\n\n### 1. Aislamiento\n\nSi una parte del programa puede fallar y no quieres que arrastre a las demás.\n\nEjemplo:\n\n```text\nServidor web con un proceso por cada petición o grupo de peticiones.\n```\n\nSi un proceso falla, el servidor puede seguir funcionando.\n\n### 2. Seguridad\n\nLos procesos tienen memoria separada, lo que reduce el riesgo de que un componente acceda por error o maliciosamente a datos de otro.\n\nEjemplo:\n\n```text\nUn navegador puede ejecutar cada pestaña en un proceso distinto.\n```\n\nAsí, si una pestaña se bloquea o tiene una vulnerabilidad, no necesariamente afecta a las demás.\n\n### 3. Independencia\n\nCuando las tareas no necesitan compartir mucha memoria o datos.\n\nEjemplo:\n\n```text\nUn sistema que ejecuta varios servicios independientes:\n- servicio de logs\n- servicio de base de datos\n- servicio de autenticación\n```\n\n### 4. Evitar problemas de sincronización\n\nComo los procesos no comparten memoria directamente, no hay condiciones de carrera sobre variables compartidas.\n\nLa comunicación se hace mediante mecanismos explícitos:\n\n- tuberías, pipes\n- sockets\n- memoria compartida\n- mensajes\n- archivos\n- colas de mensajes\n\n### 5. Entornos con limitaciones de hilos\n\nEn algunos lenguajes o entornos, los hilos no dan verdadero paralelismo en CPU.\n\nEjemplo clásico:\n\n```text\nPython con el GIL\n```\n\nEn CPython, el GIL puede limitar el paralelismo real de hilos en tareas intensivas de CPU. En esos casos, usar procesos puede ser más eficaz.\n\n## Cuándo usar hilos\n\nConviene usar **hilos** cuando necesitas:\n\n### 1. Concurrency dentro de una misma aplicación\n\nCuando una aplicación debe hacer varias cosas a la vez.\n\nEjemplo:\n\n```text\nUna interfaz gráfica que:\n- responde al usuario\n- descarga datos\n- actualiza una barra de progreso\n```\n\nSi todo estuviera en un solo hilo, la interfaz podría congelarse mientras se descarga algo.\n\n### 2. Compartir datos fácilmente\n\nLos hilos comparten memoria, así que pueden trabajar sobre las mismas estructuras de datos sin necesidad de comunicación entre procesos.\n\nEjemplo:\n\n```text\nUn servidor que mantiene una caché en memoria.\nVarios hilos pueden leer y escribir en esa caché.\n```\n\nPero hay que proteger el acceso con:\n\n- mutex\n- semáforos\n- variables atómicas\n- locks\n- monitores\n\n### 3. Reducir coste de creación y cambio de contexto\n\nCrear hilos suele ser más barato que crear procesos.\n\nCambiar de un hilo a otro también suele ser más rápido porque comparten el mismo espacio de memoria.\n\n### 4. Paralelismo en tareas intensivas de CPU\n\nSi el lenguaje y el sistema operativo permiten paralelismo real, varios hilos pueden ejecutarse en distintos núcleos de CPU.\n\nEjemplo:\n\n```text\nProcesar imágenes, matrices, simulaciones o compresión de datos.\n```\n\n### 5. Tareas de E/S\n\nLos hilos son útiles cuando una tarea espera por:\n\n- disco\n- red\n- base de datos\n- usuario\n- sockets\n\nMientras un hilo espera, otro puede continuar trabajando.\n\nEjemplo:\n\n```text\nServidor web con un hilo por conexión.\n```\n\nAunque en servidores modernos a menudo se usan modelos basados en eventos, corutinas o pools de hilos.\n\n## Riesgos de los hilos\n\nLos hilos son más rápidos y ligeros, pero también más delicados.\n\nProblemas comunes:\n\n### Condición de carrera\n\nDos hilos modifican el mismo dato al mismo tiempo y el resultado depende del orden de ejecución.\n\nEjemplo:\n\n```c\ncontador++;\n```\n\nNo siempre es una operación atómica.\n\n### Deadlock\n\nDos hilos se bloquean esperando mutuamente recursos.\n\nEjemplo:\n\n```text\nHilo A tiene el recurso 1 y espera el recurso 2.\nHilo B tiene el recurso 2 y espera el recurso 1.\n```\n\n### Inconsistencia de datos\n\nSi no se sincroniza correctamente, los datos compartidos pueden quedar en un estado inválido.\n\n### Fallos más graves\n\nUn error en un hilo puede corromper memoria compartida y tumbar todo el proceso.\n\n## Riesgos de los procesos\n\nLos procesos son más seguros, pero también más costosos.\n\nProblemas comunes:\n\n- Creación más lenta.\n- Más memoria.\n- Comunicación más compleja.\n- Compartir datos requiere mecanismos explícitos.\n- Cambiar de proceso suele ser más caro.\n\n## Regla práctica\n\nUsa **procesos** cuando necesites:\n\n- aislamiento\n- seguridad\n- tolerancia a fallos\n- independencia entre componentes\n- evitar compartir memoria\n- ejecutar código no confiable\n- saltar limitaciones como el GIL en Python\n\nUsa **hilos** cuando necesites:\n\n- concurrencia dentro de una aplicación\n- compartir datos fácilmente\n- bajo coste de creación\n- mejor rendimiento en tareas de E/S\n- paralelismo en CPU con memoria compartida\n- mantener una interfaz responsive\n\n## Ejemplo comparativo\n\n### Caso: servidor web\n\nPuede usar procesos si quieres aislar peticiones:\n\n```text\nProceso 1 atiende petición A\nProceso 2 atiende petición B\nProceso 3 atiende petición C\n```\n\nVentaja: si un proceso falla, los demás siguen.\n\nPuede usar hilos si quieres compartir recursos:\n\n```text\nHilo 1 atiende petición A\nHilo 2 atiende petición B\nHilo 3 atiende petición C\n```\n\nVentaja: comparten caché, conexiones o datos en memoria.\n\nDesventaja: un fallo o un bloqueo puede afectar a todo el proceso.\n\n## Resumen corto\n\nUn **proceso** es una unidad de ejecución aislada con su propia memoria. Es más seguro, pero más pesado.\n\nUn **hilo** es una unidad de ejecución ligera dentro de un proceso. Comparte memoria con otros hilos, es más rápido, pero requiere sincronización.\n\nEn general:\n\n```text\nProcesos para aislar.\nHilos para compartir y concurrencia.\n```",
+   "finish": "stop",
+   "s": 34.2,
+   "tokens": 2050
+  },
+  {
+   "q": "Un caracol sube por un pozo de 10 metros: de día sube 3 metros y de noche resbala 2. ¿Cuántos días tarda en salir? Explica el razonamiento paso a paso.",
+   "answer": "El caracol tarda **8 días** en salir del pozo.\n\nRazonamiento paso a paso:\n\n1. **De día sube 3 metros** y **de noche resbala 2 metros**.  \n   Por lo tanto, en un ciclo completo de día y noche, su avance neto es:\n\n   \\[\n   3 - 2 = 1 \\text{ metro por día}\n   \\]\n\n2. Pero hay que tener cuidado: **el último día no resbala**, porque si durante el día llega al borde del pozo, ya sale y no vuelve a bajar por la noche.\n\n3. Veamos día por día:\n\n   - **Día 1:** sube 3 m → está a 3 m.  \n     De noche resbala 2 m → queda a 1 m.\n\n   - **Día 2:** sube 3 m → está a 4 m.  \n     De noche resbala 2 m → queda a 2 m.\n\n   - **Día 3:** sube 3 m → está a 5 m.  \n     De noche resbala 2 m → queda a 3 m.\n\n   - **Día 4:** sube 3 m → está a 6 m.  \n     De noche resbala 2 m → queda a 4 m.\n\n   - **Día 5:** sube 3 m → está a 7 m.  \n     De noche resbala 2 m → queda a 5 m.\n\n   - **Día 6:** sube 3 m → está a 8 m.  \n     De noche resbala 2 m → queda a 6 m.\n\n   - **Día 7:** sube 3 m → está a 9 m.  \n     De noche resbala 2 m → queda a 7 m.\n\n   - **Día 8:** sube 3 m → llega a 10 m y **sale del pozo**.\n\nPor lo tanto, el caracol sale **durante el octavo día**.",
+   "finish": "stop",
+   "s": 15.1,
+   "tokens": 702
+  }
+ ],
+ "score": {
+  "num": "24/24",
+  "code": "4/4"
+ }
+}

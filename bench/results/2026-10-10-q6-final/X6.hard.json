@@ -1,0 +1,517 @@
+{
+ "tag": "X6",
+ "num": [
+  {
+   "i": 0,
+   "q": "¿Cuántos números enteros entre 1 y 1.000.000, ambos incluidos, tienen la suma de sus cifras igual a 27?",
+   "want": "55252",
+   "got": "55252",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 1550,
+   "s": 32.2
+  },
+  {
+   "i": 1,
+   "q": "En una cuadrícula se va de la esquina (0,0) a la esquina (10,6) dando pasos de una unidad hacia la derecha o hacia arriba. ¿Cuántos caminos distintos hay que NO pasan por el punto (4,3)?",
+   "want": "5068",
+   "got": "5068",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 489,
+   "s": 12.8
+  },
+  {
+   "i": 2,
+   "q": "¿Cuáles son las tres últimas cifras de 7 elevado a 2026? (responde con el número que forman, sin ceros a la izquierda si los hubiera)",
+   "want": "649",
+   "got": "649",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 1665,
+   "s": 31.2
+  },
+  {
+   "i": 3,
+   "q": "¿Con cuántos ceros termina el número 2026! (factorial de 2026)?",
+   "want": "505",
+   "got": "505",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 596,
+   "s": 14.7
+  },
+  {
+   "i": 4,
+   "q": "¿De cuántas formas se puede cubrir por completo un tablero de 3 x 10 casillas con fichas de dominó de 1 x 2 (en horizontal o en vertical)?",
+   "want": "571",
+   "got": "",
+   "ok": false,
+   "finish": "length",
+   "tokens": 8000,
+   "s": 142.5
+  },
+  {
+   "i": 5,
+   "q": "¿Cuántas permutaciones de 9 elementos no dejan ningún elemento en su posición original?",
+   "want": "133496",
+   "got": "133496",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 586,
+   "s": 13.7
+  },
+  {
+   "i": 6,
+   "q": "¿Cuántos divisores positivos tiene 3600 al cuadrado (3600²)?",
+   "want": "225",
+   "got": "225",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 347,
+   "s": 8.3
+  },
+  {
+   "i": 7,
+   "q": "¿Cuánto vale la suma de todos los números primos menores que 2000?",
+   "want": "277050",
+   "got": "",
+   "ok": false,
+   "finish": "length",
+   "tokens": 8000,
+   "s": 78.7
+  },
+  {
+   "i": 8,
+   "q": "¿Qué día de la semana será el 1 de enero de 2100? (responde con el nombre del día)",
+   "want": "viernes",
+   "got": "viernes",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 951,
+   "s": 18.6
+  },
+  {
+   "i": 9,
+   "q": "¿Cuántos días hay entre el 15 de marzo de 1987 y el 9 de octubre de 2026, contando ambos días?",
+   "want": "14454",
+   "got": "14454",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 1869,
+   "s": 30.5
+  },
+  {
+   "i": 10,
+   "q": "Se lanzan tres dados de seis caras. ¿Cuál es la probabilidad de que la suma sea 10? Responde con una fracción irreducible a/b.",
+   "want": "1/8",
+   "got": "1/8",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 518,
+   "s": 12.4
+  },
+  {
+   "i": 11,
+   "q": "Se lanza una moneda equilibrada hasta que salen dos caras seguidas. ¿Cuál es el número esperado de lanzamientos?",
+   "want": "6",
+   "got": "6",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 693,
+   "s": 15.9
+  },
+  {
+   "i": 12,
+   "q": "Sea a(1) = 1, a(2) = 1 y a(n) = a(n-1) + 2·a(n-2) para n ≥ 3. ¿Cuál es el resto de dividir a(50) entre 1000?",
+   "want": "541",
+   "got": "541",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 2205,
+   "s": 41.3
+  },
+  {
+   "i": 13,
+   "q": "¿Cuántos números de cuatro cifras (de 1000 a 9999) tienen sus cuatro cifras distintas y son divisibles por 4?",
+   "want": "1120",
+   "got": "",
+   "ok": false,
+   "finish": "length",
+   "tokens": 8000,
+   "s": 90.8
+  },
+  {
+   "i": 14,
+   "q": "¿Cuántos subconjuntos del conjunto {1, 2, ..., 15} tienen sus elementos sumando exactamente 40?",
+   "want": "401",
+   "got": "",
+   "ok": false,
+   "finish": "length",
+   "tokens": 8000,
+   "s": 128.7
+  },
+  {
+   "i": 15,
+   "q": "¿Cuál es el menor entero positivo n tal que n! termina en más de 100 ceros?",
+   "want": "410",
+   "got": "410",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 780,
+   "s": 17.1
+  },
+  {
+   "i": 16,
+   "q": "¿Cuántas soluciones tiene x + y + z + w = 20 en enteros no negativos si cada variable vale como mucho 8?",
+   "want": "375",
+   "got": "375",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 772,
+   "s": 16.4
+  },
+  {
+   "i": 17,
+   "q": "Tres semáforos cambian a verde cada 36, 48 y 54 segundos respectivamente, y los tres cambian a verde a la vez a las 12:00:00. ¿Cuántas veces cambian los tres a verde a la vez entre las 12:00:00 y las 14:00:00, ambas incluidas?",
+   "want": "17",
+   "got": "17",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 697,
+   "s": 15.6
+  },
+  {
+   "i": 18,
+   "q": "Un grifo A llena un depósito en 6 horas y un grifo B en 8 horas; un desagüe C lo vacía en 12 horas. Con el depósito vacío se abren A y B; a las 2 horas se abre también C y los tres siguen abiertos. ¿Cuántas horas pasan en total desde el principio hasta que se llena?",
+   "want": "4",
+   "got": "4",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 677,
+   "s": 15.9
+  },
+  {
+   "i": 19,
+   "q": "¿Qué ángulo en grados forman las agujas de un reloj analógico a las 7:38? (el menor de los dos)",
+   "want": "1",
+   "got": "1",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 404,
+   "s": 9.7
+  },
+  {
+   "i": 20,
+   "q": "¿Cuántos números enteros entre 1 y 2026, ambos incluidos, no son divisibles ni por 2, ni por 3, ni por 5?",
+   "want": "540",
+   "got": "540",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 925,
+   "s": 20.2
+  },
+  {
+   "i": 21,
+   "q": "¿Cuántos rectángulos (de cualquier tamaño, con los lados sobre las líneas) hay en una cuadrícula de 7 x 11 casillas?",
+   "want": "1848",
+   "got": "1848",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 353,
+   "s": 9.4
+  },
+  {
+   "i": 22,
+   "q": "¿Cuántos cuadrados (de cualquier tamaño, con los lados sobre las líneas) hay en una cuadrícula de 7 x 11 casillas?",
+   "want": "252",
+   "got": "252",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 568,
+   "s": 13.2
+  },
+  {
+   "i": 23,
+   "q": "Escribe el número 2026 en base 7. (responde solo con las cifras)",
+   "want": "5623",
+   "got": "5623",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 438,
+   "s": 10.4
+  },
+  {
+   "i": 24,
+   "q": "¿Cuánto vale la suma de las cifras de 2 elevado a 100?",
+   "want": "115",
+   "got": "115",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 1380,
+   "s": 23.0
+  },
+  {
+   "i": 25,
+   "q": "¿De cuántas formas distintas se puede formar 1 euro con monedas de 1, 2, 5, 10, 20 y 50 céntimos (sin importar el orden)?",
+   "want": "4562",
+   "got": "",
+   "ok": false,
+   "finish": "length",
+   "tokens": 8000,
+   "s": 139.5
+  },
+  {
+   "i": 26,
+   "q": "Si F(0) = 0, F(1) = 1 y F(n) = F(n-1) + F(n-2), ¿cuál es el resto de dividir F(60) entre 1000?",
+   "want": "920",
+   "got": "920",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 3282,
+   "s": 57.6
+  },
+  {
+   "i": 27,
+   "q": "41 personas en círculo, numeradas del 1 al 41, cuentan de 3 en 3 empezando por la 1 y sale del círculo cada tercera persona (la primera en salir es la 3). ¿Qué número tiene la última que queda?",
+   "want": "31",
+   "got": "",
+   "ok": false,
+   "finish": "length",
+   "tokens": 8000,
+   "s": 134.1
+  },
+  {
+   "i": 28,
+   "q": "En una isla los caballeros siempre dicen la verdad y los mentirosos siempre mienten. A dice: «Exactamente uno de nosotros tres es caballero». B dice: «C y yo somos del mismo tipo». C dice: «A es un mentiroso». ¿Cuántos caballeros hay entre A, B y C?",
+   "want": "2",
+   "got": "2",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 683,
+   "s": 15.2
+  },
+  {
+   "i": 29,
+   "q": "Se lanza un dado de seis caras 6 veces. ¿Cuál es el número esperado de valores distintos que salen? Responde con 4 decimales.",
+   "want": "3.9906",
+   "got": "3.9906",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 997,
+   "s": 21.3
+  },
+  {
+   "i": 30,
+   "q": "En un grupo de 30 personas, ¿cuál es la probabilidad de que al menos dos cumplan años el mismo día (365 días, todos igual de probables)? Responde con 4 decimales.",
+   "want": "0.7063",
+   "got": "0.7063",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 442,
+   "s": 11.1
+  },
+  {
+   "i": 31,
+   "q": "¿Cuántos enteros positivos menores que 1000 son iguales a la suma de los cubos de sus cifras?",
+   "want": "5",
+   "got": "5",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 5530,
+   "s": 96.6
+  },
+  {
+   "i": 32,
+   "q": "¿Cuál es el determinante de la matriz de filas (2, -1, 0, 3), (1, 4, -2, 0), (0, 3, 5, -1) y (-2, 1, 1, 2)?",
+   "want": "285",
+   "got": "285",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 2013,
+   "s": 38.2
+  },
+  {
+   "i": 33,
+   "q": "¿Cuántos puntos (x, y) con coordenadas enteras cumplen x² + y² ≤ 100?",
+   "want": "317",
+   "got": "317",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 1737,
+   "s": 34.1
+  },
+  {
+   "i": 34,
+   "q": "¿Cuál es el menor número primo mayor que 1.000.000?",
+   "want": "1000003",
+   "got": "",
+   "ok": false,
+   "finish": "length",
+   "tokens": 8000,
+   "s": 132.4
+  },
+  {
+   "i": 35,
+   "q": "¿Cuál es el inverso de 17 módulo 3120, es decir, el entero x entre 0 y 3119 con 17·x ≡ 1 (mod 3120)?",
+   "want": "2753",
+   "got": "2753",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 780,
+   "s": 17.5
+  },
+  {
+   "i": 36,
+   "q": "¿Cuánto vale la suma de 1/(k·(k+1)) para k desde 1 hasta 99? Responde con una fracción irreducible a/b.",
+   "want": "99/100",
+   "got": "99/100",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 247,
+   "s": 7.3
+  },
+  {
+   "i": 37,
+   "q": "¿Cuántas cadenas binarias de longitud 15 no tienen dos unos seguidos?",
+   "want": "1597",
+   "got": "1597",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 509,
+   "s": 11.4
+  },
+  {
+   "i": 38,
+   "q": "¿De cuántas formas se pueden sentar 6 personas alrededor de una mesa redonda (las rotaciones cuentan como la misma forma) si dos de ellas, Ana y Luis, no pueden sentarse juntas?",
+   "want": "72",
+   "got": "72",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 381,
+   "s": 9.6
+  },
+  {
+   "i": 39,
+   "q": "Un número de tres cifras abc (a ≠ 0) cumple que abc = a! + b! + c!. ¿Cuál es ese número?",
+   "want": "145",
+   "got": "145",
+   "ok": true,
+   "finish": "stop",
+   "tokens": 3330,
+   "s": 58.6
+  }
+ ],
+ "code": [
+  {
+   "i": 0,
+   "q": "Escribe una función Python `distancia_edicion(a, b)` que devuelva la distancia de Levenshtein entre dos cadenas (inserciones, borrados y sustituciones de un carácter, cada una cuesta 1).",
+   "ok": true,
+   "why": [],
+   "code": "def distancia_edicion(a: str, b: str) -> int:\n    if len(a) < len(b):\n        a, b = b, a\n\n    prev = list(range(len(b) + 1))\n\n    for i, ca in enumerate(a, start=1):\n        curr = [i] + [0] * len(b)\n\n        for j, cb in enumerate(b, start=1):\n            if ca == cb:\n                curr[j] = prev[j - 1]\n            else:\n                curr[j] = 1 + min(\n                    prev[j],      # borrado\n                    curr[j - 1],  # inserción\n                    prev[j - 1]   # sustitución\n                )\n\n        prev = curr\n\n    return prev[-1]\n",
+   "finish": "stop",
+   "tokens": 235,
+   "s": 7.8
+  },
+  {
+   "i": 1,
+   "q": "Escribe una función Python `coincide(s, p)` que diga si la cadena s coincide ENTERA con el patrón p, donde '.' vale cualquier carácter y '*' significa cero o más repeticiones del elemento anterior. No uses el módulo re.",
+   "ok": true,
+   "why": [],
+   "code": "def coincide(s: str, p: str) -> bool:\n    \"\"\"\n    Devuelve True si la cadena s coincide completamente con el patrón p.\n\n    Reglas:\n    - '.' coincide con cualquier carácter.\n    - '*' coincide con cero o más repeticiones del elemento anterior.\n    \"\"\"\n    m, n = len(s), len(p)\n\n    # dp[i][j] == True si s[:i] coincide con p[:j]\n    dp = [[False] * (n + 1) for _ in range(m + 1)]\n    dp[0][0] = True\n\n    # Patrón que coincide con cadena vacía, por ejemplo: a*, a*b*, .*\n    for j in range(2, n + 1):\n        if p[j - 1] == '*':\n            dp[0][j] = dp[0][j - 2]\n\n    for i in range(1, m + 1):\n        for j in range(1, n + 1):\n            if p[j - 1] == '*':\n                # Caso 1: '*' usa cero repeticiones del elemento anterior.\n                dp[i][j] = dp[i][j - 2]\n\n                # Caso 2: '*' usa una o más repeticiones si el anterior coincide.\n                if j >= 2 and (p[j - 2] == '.' or p[j - 2] == s[i - 1]):\n                    dp[i][j] = dp[i][j] or dp[i - 1][j]\n            else:\n                # Coincidencia normal de un carácter o '.'\n                dp[i][j] = dp[i - 1][j - 1] and (p[j - 1] == '.' or p[j - 1] == s[i - 1])\n\n    return dp[m][n]\n",
+   "finish": "stop",
+   "tokens": 2348,
+   "s": 48.3
+  },
+  {
+   "i": 2,
+   "q": "Escribe una función Python `fusionar(intervalos)` que reciba una lista de tuplas (inicio, fin) y devuelva la lista de intervalos fusionados (los que se solapan o se tocan se unen), ordenada por inicio, como lista de tuplas.",
+   "ok": true,
+   "why": [],
+   "code": "def fusionar(intervalos):\n    if not intervalos:\n        return []\n\n    # Normalizamos por si algún intervalo viene con inicio > fin\n    normalizados = [(min(a, b), max(a, b)) for a, b in intervalos]\n\n    # Ordenamos por inicio y luego por fin\n    normalizados.sort()\n\n    fusionados = []\n\n    for inicio, fin in normalizados:\n        if not fusionados:\n            fusionados.append((inicio, fin))\n        else:\n            ultimo_inicio, ultimo_fin = fusionados[-1]\n\n            # Si se solapan o se tocan, los unimos\n            if inicio <= ultimo_fin:\n                fusionados[-1] = (ultimo_inicio, max(ultimo_fin, fin))\n            else:\n                fusionados.append((inicio, fin))\n\n    return fusionados\n",
+   "finish": "stop",
+   "tokens": 369,
+   "s": 9.7
+  },
+  {
+   "i": 3,
+   "q": "Escribe una función Python `siguiente_permutacion(lista)` que devuelva (como lista nueva) la siguiente permutación en orden lexicográfico; si ya es la última, devuelve la primera (la lista ordenada de menor a mayor).",
+   "ok": true,
+   "why": [],
+   "code": "def siguiente_permutacion(lista):\n    a = list(lista)\n    n = len(a)\n\n    if n <= 1:\n        return a\n\n    i = n - 2\n    while i >= 0 and a[i] >= a[i + 1]:\n        i -= 1\n\n    if i < 0:\n        return sorted(a)\n\n    j = n - 1\n    while a[j] <= a[i]:\n        j -= 1\n\n    a[i], a[j] = a[j], a[i]\n    a[i + 1:] = reversed(a[i + 1:])\n\n    return a\n",
+   "finish": "stop",
+   "tokens": 526,
+   "s": 12.8
+  },
+  {
+   "i": 4,
+   "q": "Escribe una función Python `mochila(pesos, valores, capacidad)` que devuelva el mayor valor total de un subconjunto de objetos cuyo peso total no pase de la capacidad (cada objeto se coge como mucho una vez).",
+   "ok": false,
+   "why": [
+    "NameError: name 'mochila' is not defined"
+   ],
+   "code": "",
+   "finish": "length",
+   "tokens": 8000,
+   "s": 150.7
+  },
+  {
+   "i": 5,
+   "q": "Escribe una función Python `evaluar(expr)` que evalúe una expresión con enteros, +, -, *, / (división entera hacia abajo, como // en Python), paréntesis y el menos unario, respetando la precedencia y la asociatividad por la izquierda. No uses eval.",
+   "ok": false,
+   "why": [
+    "NameError: name 'evaluar' is not defined"
+   ],
+   "code": "",
+   "finish": "length",
+   "tokens": 8000,
+   "s": 143.0
+  },
+  {
+   "i": 6,
+   "q": "Escribe una función Python `palindromo_mas_largo(s)` que devuelva la subcadena palíndroma más larga de s (si hay varias de la misma longitud, la que empieza antes).",
+   "ok": false,
+   "why": [
+    "NameError: name 'palindromo_mas_largo' is not defined"
+   ],
+   "code": "",
+   "finish": "length",
+   "tokens": 8000,
+   "s": 150.4
+  },
+  {
+   "i": 7,
+   "q": "Escribe una función Python `dijkstra(grafo, origen)` donde grafo es un dict nodo -> lista de (vecino, peso) con pesos positivos; devuelve un dict con la distancia mínima desde el origen a cada nodo alcanzable (incluido el origen, a distancia 0).",
+   "ok": true,
+   "why": [],
+   "code": "import heapq\n\ndef dijkstra(grafo, origen):\n    distancias = {origen: 0}\n    cola = [(0, origen)]\n\n    while cola:\n        distancia_actual, nodo = heapq.heappop(cola)\n\n        if distancia_actual > distancias.get(nodo, float(\"inf\")):\n            continue\n\n        for vecino, peso in grafo.get(nodo, []):\n            nueva_distancia = distancia_actual + peso\n\n            if nueva_distancia < distancias.get(vecino, float(\"inf\")):\n                distancias[vecino] = nueva_distancia\n                heapq.heappush(cola, (nueva_distancia, vecino))\n\n    return distancias\n",
+   "finish": "stop",
+   "tokens": 519,
+   "s": 13.1
+  },
+  {
+   "i": 8,
+   "q": "Escribe una función Python `romano_a_entero(s)` que convierta un número romano válido (1 a 3999) en entero.",
+   "ok": true,
+   "why": [],
+   "code": "def romano_a_entero(s: str) -> int:\n    \"\"\"\n    Convierte un número romano válido (1 a 3999) en entero.\n    \"\"\"\n    valores = {\n        \"I\": 1,\n        \"V\": 5,\n        \"X\": 10,\n        \"L\": 50,\n        \"C\": 100,\n        \"D\": 500,\n        \"M\": 1000,\n    }\n\n    s = s.strip().upper()\n    total = 0\n\n    for i, caracter in enumerate(s):\n        if caracter not in valores:\n            raise ValueError(f\"Carácter romano inválido: {caracter}\")\n\n        valor_actual = valores[caracter]\n\n        if i + 1 < len(s):\n            valor_siguiente = valores[s[i + 1]]\n            if valor_actual < valor_siguiente:\n                total -= valor_actual\n                continue\n\n        total += valor_actual\n\n    if not 1 <= total <= 3999:\n        raise ValueError(\"El número romano debe estar entre 1 y 3999\")\n\n    return total\n",
+   "finish": "stop",
+   "tokens": 402,
+   "s": 10.1
+  },
+  {
+   "i": 9,
+   "q": "Escribe una función Python `islas(matriz)` que cuente los grupos de unos conectados en horizontal o en vertical (no en diagonal) de una matriz de ceros y unos (lista de listas). No modifiques la matriz que te pasan.",
+   "ok": true,
+   "why": [],
+   "code": "def islas(matriz):\n    if not matriz:\n        return 0\n\n    visitadas = set()\n    total = 0\n\n    for i, fila in enumerate(matriz):\n        for j, valor in enumerate(fila):\n            if valor == 1 and (i, j) not in visitadas:\n                total += 1\n                pila = [(i, j)]\n                visitadas.add((i, j))\n\n                while pila:\n                    x, y = pila.pop()\n\n                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):\n                        nx, ny = x + dx, y + dy\n\n                        if (\n                            0 <= nx < len(matriz)\n                            and 0 <= ny < len(matriz[nx])\n                            and (nx, ny) not in visitadas\n                            and matriz[nx][ny] == 1\n                        ):\n                            visitadas.add((nx, ny))\n                            pila.append((nx, ny))\n\n    return total\n",
+   "finish": "stop",
+   "tokens": 750,
+   "s": 16.7
+  }
+ ],
+ "score": {
+  "num": "33/40",
+  "code": "7/10"
+ }
+}

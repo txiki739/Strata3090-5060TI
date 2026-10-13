@@ -1,0 +1,255 @@
+{
+ "tag": "P16-12288",
+ "prompt_cache": 16,
+ "cache_ram_mib": 12288,
+ "ok": true,
+ "why": "",
+ "engine_restarts": 0,
+ "ready_avail_gib": 18.86,
+ "ready_unit_gib": 100.14,
+ "min_avail_gib": 12.01,
+ "max_unit_gib": 107.12,
+ "prompt_cache_line": "strata serve: prompt cache on: up to 16 checkpoints of 112.6 MiB, 12288 MiB for stashed sequences",
+ "second_turn_cached": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "steps": [
+  {
+   "conv": 1,
+   "turn": 1,
+   "s": 41.5,
+   "prompt": 58927,
+   "cached": 0,
+   "avail": 17.72
+  },
+  {
+   "conv": 2,
+   "turn": 1,
+   "s": 33.3,
+   "prompt": 62582,
+   "cached": 0,
+   "avail": 16.31
+  },
+  {
+   "conv": 3,
+   "turn": 1,
+   "s": 32.0,
+   "prompt": 61143,
+   "cached": 0,
+   "avail": 15.0
+  },
+  {
+   "conv": 4,
+   "turn": 1,
+   "s": 33.8,
+   "prompt": 65397,
+   "cached": 0,
+   "avail": 13.68
+  },
+  {
+   "conv": 5,
+   "turn": 1,
+   "s": 34.2,
+   "prompt": 64248,
+   "cached": 0,
+   "avail": 12.7
+  },
+  {
+   "conv": 6,
+   "turn": 1,
+   "s": 41.6,
+   "prompt": 67313,
+   "cached": 0,
+   "avail": 13.45
+  },
+  {
+   "conv": 7,
+   "turn": 1,
+   "s": 39.9,
+   "prompt": 66976,
+   "cached": 0,
+   "avail": 13.37
+  },
+  {
+   "conv": 8,
+   "turn": 1,
+   "s": 43.2,
+   "prompt": 73309,
+   "cached": 0,
+   "avail": 13.33
+  },
+  {
+   "conv": 9,
+   "turn": 1,
+   "s": 42.0,
+   "prompt": 69157,
+   "cached": 0,
+   "avail": 13.22
+  },
+  {
+   "conv": 10,
+   "turn": 1,
+   "s": 37.5,
+   "prompt": 65830,
+   "cached": 0,
+   "avail": 13.15
+  },
+  {
+   "conv": 11,
+   "turn": 1,
+   "s": 37.8,
+   "prompt": 65773,
+   "cached": 0,
+   "avail": 13.19
+  },
+  {
+   "conv": 12,
+   "turn": 1,
+   "s": 33.6,
+   "prompt": 63442,
+   "cached": 0,
+   "avail": 13.32
+  },
+  {
+   "conv": 13,
+   "turn": 1,
+   "s": 33.8,
+   "prompt": 65394,
+   "cached": 0,
+   "avail": 13.39
+  },
+  {
+   "conv": 14,
+   "turn": 1,
+   "s": 32.8,
+   "prompt": 56414,
+   "cached": 0,
+   "avail": 13.41
+  },
+  {
+   "conv": 1,
+   "turn": 2,
+   "s": 31.9,
+   "prompt": 58991,
+   "cached": 0,
+   "avail": 12.52
+  },
+  {
+   "conv": 2,
+   "turn": 2,
+   "s": 32.3,
+   "prompt": 62646,
+   "cached": 0,
+   "avail": 12.68
+  },
+  {
+   "conv": 3,
+   "turn": 2,
+   "s": 34.4,
+   "prompt": 61207,
+   "cached": 0,
+   "avail": 12.69
+  },
+  {
+   "conv": 4,
+   "turn": 2,
+   "s": 63.6,
+   "prompt": 65461,
+   "cached": 0,
+   "avail": 12.73
+  },
+  {
+   "conv": 5,
+   "turn": 2,
+   "s": 33.6,
+   "prompt": 64312,
+   "cached": 0,
+   "avail": 12.6
+  },
+  {
+   "conv": 6,
+   "turn": 2,
+   "s": 40.5,
+   "prompt": 67377,
+   "cached": 0,
+   "avail": 13.45
+  },
+  {
+   "conv": 7,
+   "turn": 2,
+   "s": 40.6,
+   "prompt": 67040,
+   "cached": 0,
+   "avail": 13.36
+  },
+  {
+   "conv": 8,
+   "turn": 2,
+   "s": 42.6,
+   "prompt": 73373,
+   "cached": 0,
+   "avail": 13.34
+  },
+  {
+   "conv": 9,
+   "turn": 2,
+   "s": 42.3,
+   "prompt": 69221,
+   "cached": 0,
+   "avail": 13.21
+  },
+  {
+   "conv": 10,
+   "turn": 2,
+   "s": 36.9,
+   "prompt": 65894,
+   "cached": 0,
+   "avail": 13.19
+  },
+  {
+   "conv": 11,
+   "turn": 2,
+   "s": 38.1,
+   "prompt": 65837,
+   "cached": 0,
+   "avail": 13.2
+  },
+  {
+   "conv": 12,
+   "turn": 2,
+   "s": 32.4,
+   "prompt": 63506,
+   "cached": 0,
+   "avail": 13.29
+  },
+  {
+   "conv": 13,
+   "turn": 2,
+   "s": 33.2,
+   "prompt": 65458,
+   "cached": 0,
+   "avail": 13.43
+  },
+  {
+   "conv": 14,
+   "turn": 2,
+   "s": 32.1,
+   "prompt": 56478,
+   "cached": 0,
+   "avail": 13.27
+  }
+ ]
+}

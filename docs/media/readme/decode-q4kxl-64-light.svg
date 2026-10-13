@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" role="img" aria-label="UD-Q4_K_XL decode per prompt with 64 GB of RAM" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<title>UD-Q4_K_XL decode per prompt with 64 GB of RAM</title>
+<text x="0" y="16" font-size="15" font-weight="600" fill="#1f2328">UD-Q4_K_XL · decode per prompt, 64 GB of RAM (tokens/s)</text>
+<rect x="0" y="28" width="12" height="12" rx="3" fill="#97c425"/>
+<text x="18" y="38" font-size="13" fill="#59636e">RTX 3090</text>
+<rect x="99.2" y="28" width="12" height="12" rx="3" fill="#1b9247"/>
+<text x="117.2" y="38" font-size="13" fill="#59636e">RTX 3090 + RTX 5060 Ti</text>
+<line x1="180.0" y1="52" x2="180.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
+<text x="180.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">0</text>
+<line x1="310.0" y1="52" x2="310.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
+<text x="310.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">50</text>
+<line x1="440.0" y1="52" x2="440.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
+<text x="440.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">100</text>
+<line x1="570.0" y1="52" x2="570.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
+<text x="570.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">150</text>
+<line x1="700.0" y1="52" x2="700.0" y2="338" stroke="#d1d9e0" stroke-width="1"/>
+<text x="700.0" y="354" font-size="11" fill="#59636e" text-anchor="middle">200</text>
+<text x="170" y="77.5" font-size="13" fill="#1f2328" text-anchor="end">Spanish chat</text>
+<path d="M180.0,58.0 h61.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-61.5 z" fill="#97c425"/>
+<text x="251.5" y="69" font-size="12" fill="#59636e">25.2</text>
+<path d="M180.0,74.0 h93.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-93.0 z" fill="#1b9247"/>
+<text x="283.0" y="85" font-size="12" fill="#59636e">37.3</text>
+<text x="170" y="123.5" font-size="13" fill="#1f2328" text-anchor="end">Reasoning</text>
+<path d="M180.0,104.0 h75.3 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-75.3 z" fill="#97c425"/>
+<text x="265.3" y="115" font-size="12" fill="#59636e">30.5</text>
+<path d="M180.0,120.0 h99.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-99.2 z" fill="#1b9247"/>
+<text x="289.2" y="131" font-size="12" fill="#59636e">39.7</text>
+<text x="170" y="169.5" font-size="13" fill="#1f2328" text-anchor="end">After an 18K document</text>
+<path d="M180.0,150.0 h47.7 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-47.7 z" fill="#97c425"/>
+<text x="237.7" y="161" font-size="12" fill="#59636e">19.9</text>
+<path d="M180.0,166.0 h81.5 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-81.5 z" fill="#1b9247"/>
+<text x="271.5" y="177" font-size="12" fill="#59636e">32.9</text>
+<text x="170" y="215.5" font-size="13" fill="#1f2328" text-anchor="end">Code</text>
+<path d="M180.0,196.0 h69.6 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-69.6 z" fill="#97c425"/>
+<text x="259.6" y="207" font-size="12" fill="#59636e">28.3</text>
+<path d="M180.0,212.0 h108.1 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-108.1 z" fill="#1b9247"/>
+<text x="298.1" y="223" font-size="12" fill="#59636e">43.1</text>
+<text x="170" y="261.5" font-size="13" fill="#1f2328" text-anchor="end">Edit (3.3K script)</text>
+<path d="M180.0,242.0 h110.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-110.9 z" fill="#97c425"/>
+<text x="300.9" y="253" font-size="12" fill="#59636e">44.2</text>
+<path d="M180.0,258.0 h181.4 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-181.4 z" fill="#1b9247"/>
+<text x="371.4" y="269" font-size="12" fill="#59636e">71.3</text>
+<text x="170" y="307.5" font-size="13" fill="#1f2328" text-anchor="end">After a 5K prompt</text>
+<path d="M180.0,288.0 h36.8 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-36.8 z" fill="#97c425"/>
+<text x="226.8" y="299" font-size="12" fill="#59636e">15.7</text>
+<path d="M180.0,304.0 h63.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-63.9 z" fill="#1b9247"/>
+<text x="253.9" y="315" font-size="12" fill="#59636e">26.1</text></svg>

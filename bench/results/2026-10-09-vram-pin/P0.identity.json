@@ -1,0 +1,98 @@
+{
+ "tag": "P0",
+ "args": [
+  "--pack",
+  "../Strata-data/packs/huihui",
+  "--native",
+  "../Strata-data/models/HUIHUI-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+  "--expert-profile",
+  "./data/expert-profile.bin",
+  "--expert-cache",
+  "auto",
+  "--prefill",
+  "32768",
+  "--feed-max",
+  "52",
+  "--spec",
+  "4",
+  "--spec-min-p",
+  "0.5",
+  "--spec-lookup",
+  "16",
+  "--adapt-every",
+  "0",
+  "--mtp",
+  "../Strata-data/mtp/rt-es",
+  "--max-context",
+  "200192",
+  "--kv",
+  "int8",
+  "--pcie-mode",
+  "kernel",
+  "--pcie-frac",
+  "0",
+  "--second-gpu",
+  "0",
+  "--main-gpu",
+  "1",
+  "--head-split",
+  "0.45",
+  "--pool-workers",
+  "4",
+  "--second-gpu-reserve-mib",
+  "512",
+  "--second-gpu-prefetch-mb",
+  "6",
+  "--kv-grow"
+ ],
+ "ready_s": 58.0,
+ "ready_avail_gib": 44.86,
+ "answers": [
+  {
+   "content": "La fotosíntesis es el proceso bioquímico mediante el cual las plantas, algas y ciertas bacterias convierten la energía lumínica en energía química. Durante este proceso, estos organismos utilizan dióxido de carbono y agua para producir glucosa, liberando oxígeno como subproducto. Esta reacción es fundamental para la vida en la Tierra, ya que proporciona la base de las cadenas alimentarias y mantiene los niveles de oxígeno atmosférico.",
+   "s": 3.0,
+   "prompt": 25,
+   "completion": 95
+  },
+  {
+   "content": "```python\ndef first_n_primes(n: int) -> list[int]:\n    \"\"\"\n    Devuelve una lista con los n primeros números primos.\n    \n    Args:\n        n: Número de primos a devolver.\n        \n    Returns:\n        Lista con los n primeros números primos.\n    \"\"\"\n    if n <= 0:\n        return []\n    \n    primes = []\n    candidate = 2\n    \n    while len(primes) < n:\n        is_prime = True\n        for p in primes:\n            if p * p > candidate:\n                break\n            if candidate % p == 0:\n                is_prime = False\n                break\n        if is_prime:\n            primes.append(candidate)\n       ",
+   "s": 3.8,
+   "prompt": 33,
+   "completion": 160
+  },
+  {
+   "content": "Basado en el código proporcionado, aquí tienes un resumen de cinco puntos sobre qué hace este módulo (`expert_source.cpp`):\n\n1.  **Gestión de Fuente de Expertos en Disco (Memory-Mapped):**\n    Implementa la clase `FileExpertSource`, que carga un archivo binario grande (`experts.bin`) en memoria mediante *memory-mapping* (`mmap` en Linux/Unix o `MapViewOfFile` en Windows). Esto permite acceder a los pesos de los expertos (en formato GGUF/Q2_0) como si estuvieran en RAM, aprovechando la caché de páginas del sistema operativo para evitar lecturas de disco constantes, lo cual es crítico para el rendimiento.\n\n2.  **Validación Estricta de Geometría y Layout",
+   "s": 7.8,
+   "prompt": 6515,
+   "completion": 160
+  },
+  {
+   "content": "La capital de Australia es **Canberra**.\n\nNo es Sídney porque, en 1908, se eligió Canberra como una solución de compromiso para resolver la rivalidad entre las dos ciudades más grandes y poderosas del país, **Sídney** y **Melbourne**, que competían por el título de capital. Canberra fue diseñada específicamente para ser la sede del gobierno federal.",
+   "s": 2.3,
+   "prompt": 33,
+   "completion": 82
+  },
+  {
+   "content": "The engine distributes experts between video memory and RAM.",
+   "s": 0.6,
+   "prompt": 33,
+   "completion": 11
+  }
+ ],
+ "engine": [
+  "strata generate: 1416 MiB of weights loaded from ../Strata-data/packs/huihui (303 canonical tensors skipped: served natively)",
+  "strata generate: expert arena: 48 of 48 layers pinned (71 GiB, page-locked as each layer loaded)",
+  "strata generate: loaded 71.73 GiB at 1.81 GiB/s",
+  "strata generate: pre-filled 5532 of 5532 slots from the profile; slot 0 verified",
+  "strata generate: second GPU 0 (NVIDIA GeForce RTX 5060 Ti): 4954 experts from the profile and 0 empty slots, 14.48 GiB",
+  "strata serve: the prompt path borrows up to 920 cache slots (2.68 GiB), 294 (0.87 GiB) on the second GPU",
+  "strata serve: elastic K/V: 16384 of 200192 cells in VRAM (0.25 of 2.59 GiB); the expert cache (5532 slots) gives the K/V room below slot 3897 as the context grows",
+  "strata verify: captured the 8-token window (upload no error, sync no error)",
+  "strata verify: captured the 2-token window (upload no error, sync no error)",
+  "strata verify: captured the 6-token window (upload no error, sync no error)",
+  "strata verify: captured the 1-token window (upload no error, sync no error)",
+  "strata verify: captured the 4-token window (upload no error, sync no error)",
+  "strata verify: captured the 3-token window (upload no error, sync no error)"
+ ],
+ "restarts": 0
+}

@@ -1,0 +1,112 @@
+{
+ "tag": "Q8-rr05",
+ "args": [
+  "--pack",
+  "../Strata-data/packs/huihui-q8_0",
+  "--native",
+  "../Strata-data/models/HUIHUI-Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+  "--expert-profile",
+  "./data/expert-profile.bin",
+  "--expert-cache",
+  "auto",
+  "--prefill",
+  "32768",
+  "--feed-max",
+  "52",
+  "--spec",
+  "4",
+  "--spec-min-p",
+  "0.5",
+  "--spec-lookup",
+  "16",
+  "--adapt-every",
+  "1",
+  "--mtp",
+  "../Strata-data/mtp/rt-es",
+  "--max-context",
+  "200192",
+  "--kv",
+  "int8",
+  "--pcie-mode",
+  "kernel",
+  "--pcie-frac",
+  "0.25",
+  "--second-gpu",
+  "0",
+  "--main-gpu",
+  "1",
+  "--head-split",
+  "0.45",
+  "--pool-workers",
+  "4",
+  "--second-gpu-reserve-mib",
+  "512",
+  "--second-gpu-prefetch-mb",
+  "6",
+  "--kv-grow",
+  "--prompt-cache",
+  "32",
+  "--vram-pin-gib",
+  "11.0",
+  "--second-gpu-pin-gib",
+  "11.0",
+  "--cache-ram",
+  "10240"
+ ],
+ "env": [
+  "STRATA_ROUTE_RESIDENT=0.5"
+ ],
+ "texts": {
+  "Argentina.txt": {
+   "tokens": 768,
+   "nll": 1.9026375911458333,
+   "ppl": 6.703552375228983,
+   "s": 207.5,
+   "rr": [
+    "route-resident: margin 0.5 ranks 6-9: tail entries no GPU held 100288, swapped 89322 (89.1%); entries no GPU held 191218 -> 101896 (46.7% fewer)"
+   ],
+   "top1_same": 0.8997395833333334,
+   "kl_mean": 0.030963756065642754,
+   "kl_median": 0.01420161292866566,
+   "dnll": 0.004393611979166667,
+   "dnll_se": 0.010448991581216862
+  },
+  "Gabriel_García_Márquez.txt": {
+   "tokens": 768,
+   "nll": 1.4641788125,
+   "ppl": 4.323990974623836,
+   "s": 111.1,
+   "rr": [
+    "route-resident: margin 0.5 ranks 6-9: tail entries no GPU held 111324, swapped 96008 (86.2%); entries no GPU held 223870 -> 127862 (42.9% fewer)"
+   ],
+   "top1_same": 0.9231770833333334,
+   "kl_mean": 0.04683263215841557,
+   "kl_median": 0.013730658939558337,
+   "dnll": 0.023014325520833333,
+   "dnll_se": 0.012670729400708805
+  },
+  "México.txt": {
+   "tokens": 768,
+   "nll": 1.1588484140625,
+   "ppl": 3.1862619081674284,
+   "s": 107.3,
+   "rr": [
+    "route-resident: margin 0.5 ranks 6-9: tail entries no GPU held 100569, swapped 89043 (88.5%); entries no GPU held 186122 -> 97079 (47.8% fewer)"
+   ],
+   "top1_same": 0.91796875,
+   "kl_mean": 0.034662485263468816,
+   "kl_median": 0.009494717516881957,
+   "dnll": -0.000720003906249998,
+   "dnll_se": 0.010574423495941399
+  }
+ },
+ "all": {
+  "tokens": 2304,
+  "nll": 1.508554939236111,
+  "ppl": 4.520194117339903,
+  "top1_same": 0.9136284722222222,
+  "kl_mean": 0.037486291162509046,
+  "dnll": 0.008895977864583333,
+  "dnll_se": 0.006511078088593358
+ }
+}

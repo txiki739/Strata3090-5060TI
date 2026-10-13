@@ -1,0 +1,370 @@
+{
+ "tag": "AG-U4D",
+ "turns": [
+  {
+   "turn": 1,
+   "status": 200,
+   "wall_s": 12.97,
+   "usage": {
+    "prompt_tokens": 6103,
+    "completion_tokens": 600,
+    "total_tokens": 6703,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   }
+  },
+  {
+   "turn": 2,
+   "status": 200,
+   "wall_s": 7.27,
+   "usage": {
+    "prompt_tokens": 6139,
+    "completion_tokens": 600,
+    "total_tokens": 6739,
+    "prompt_tokens_details": {
+     "cached_tokens": 6098
+    }
+   }
+  },
+  {
+   "turn": 3,
+   "status": 200,
+   "wall_s": 12.37,
+   "usage": {
+    "prompt_tokens": 10308,
+    "completion_tokens": 600,
+    "total_tokens": 10908,
+    "prompt_tokens_details": {
+     "cached_tokens": 6134
+    }
+   }
+  },
+  {
+   "turn": 4,
+   "status": 200,
+   "wall_s": 7.44,
+   "usage": {
+    "prompt_tokens": 10343,
+    "completion_tokens": 600,
+    "total_tokens": 10943,
+    "prompt_tokens_details": {
+     "cached_tokens": 10303
+    }
+   }
+  },
+  {
+   "turn": 5,
+   "status": 200,
+   "wall_s": 11.67,
+   "usage": {
+    "prompt_tokens": 13317,
+    "completion_tokens": 600,
+    "total_tokens": 13917,
+    "prompt_tokens_details": {
+     "cached_tokens": 10342
+    }
+   }
+  },
+  {
+   "turn": 6,
+   "status": 200,
+   "wall_s": 12.8,
+   "usage": {
+    "prompt_tokens": 17413,
+    "completion_tokens": 600,
+    "total_tokens": 18013,
+    "prompt_tokens_details": {
+     "cached_tokens": 13312
+    }
+   }
+  },
+  {
+   "turn": 7,
+   "status": 200,
+   "wall_s": 7.26,
+   "usage": {
+    "prompt_tokens": 17436,
+    "completion_tokens": 600,
+    "total_tokens": 18036,
+    "prompt_tokens_details": {
+     "cached_tokens": 17408
+    }
+   }
+  },
+  {
+   "turn": 8,
+   "status": 200,
+   "wall_s": 11.19,
+   "usage": {
+    "prompt_tokens": 20371,
+    "completion_tokens": 600,
+    "total_tokens": 20971,
+    "prompt_tokens_details": {
+     "cached_tokens": 17431
+    }
+   }
+  },
+  {
+   "turn": 9,
+   "status": 200,
+   "wall_s": 6.58,
+   "usage": {
+    "prompt_tokens": 20410,
+    "completion_tokens": 600,
+    "total_tokens": 21010,
+    "prompt_tokens_details": {
+     "cached_tokens": 20366
+    }
+   }
+  },
+  {
+   "turn": 10,
+   "status": 200,
+   "wall_s": 11.97,
+   "usage": {
+    "prompt_tokens": 25272,
+    "completion_tokens": 600,
+    "total_tokens": 25872,
+    "prompt_tokens_details": {
+     "cached_tokens": 20405
+    }
+   }
+  },
+  {
+   "turn": 11,
+   "status": 200,
+   "wall_s": 8.08,
+   "usage": {
+    "prompt_tokens": 25308,
+    "completion_tokens": 600,
+    "total_tokens": 25908,
+    "prompt_tokens_details": {
+     "cached_tokens": 25267
+    }
+   }
+  },
+  {
+   "turn": 12,
+   "status": 200,
+   "wall_s": 7.07,
+   "usage": {
+    "prompt_tokens": 25336,
+    "completion_tokens": 600,
+    "total_tokens": 25936,
+    "prompt_tokens_details": {
+     "cached_tokens": 25303
+    }
+   }
+  },
+  {
+   "turn": 13,
+   "status": 200,
+   "wall_s": 12.66,
+   "usage": {
+    "prompt_tokens": 30973,
+    "completion_tokens": 600,
+    "total_tokens": 31573,
+    "prompt_tokens_details": {
+     "cached_tokens": 25335
+    }
+   }
+  },
+  {
+   "turn": 14,
+   "status": 200,
+   "wall_s": 8.62,
+   "usage": {
+    "prompt_tokens": 31521,
+    "completion_tokens": 600,
+    "total_tokens": 32121,
+    "prompt_tokens_details": {
+     "cached_tokens": 30972
+    }
+   }
+  },
+  {
+   "turn": 15,
+   "status": 200,
+   "wall_s": 6.86,
+   "usage": {
+    "prompt_tokens": 31546,
+    "completion_tokens": 600,
+    "total_tokens": 32146,
+    "prompt_tokens_details": {
+     "cached_tokens": 31516
+    }
+   }
+  },
+  {
+   "turn": 16,
+   "status": 200,
+   "wall_s": 7.52,
+   "usage": {
+    "prompt_tokens": 31572,
+    "completion_tokens": 600,
+    "total_tokens": 32172,
+    "prompt_tokens_details": {
+     "cached_tokens": 31541
+    }
+   }
+  },
+  {
+   "turn": 17,
+   "status": 200,
+   "wall_s": 1.93,
+   "usage": {
+    "prompt_tokens": 31600,
+    "completion_tokens": 136,
+    "total_tokens": 31736,
+    "prompt_tokens_details": {
+     "cached_tokens": 31567
+    }
+   }
+  },
+  {
+   "turn": 18,
+   "status": 200,
+   "wall_s": 7.29,
+   "usage": {
+    "prompt_tokens": 31644,
+    "completion_tokens": 600,
+    "total_tokens": 32244,
+    "prompt_tokens_details": {
+     "cached_tokens": 31599
+    }
+   }
+  }
+ ],
+ "engine": [
+  {
+   "prompt": 6103,
+   "cached": 0,
+   "prompt_ms": 6006,
+   "gen": 600,
+   "gen_ms": 6951
+  },
+  {
+   "prompt": 6139,
+   "cached": 6098,
+   "prompt_ms": 468,
+   "gen": 600,
+   "gen_ms": 6792
+  },
+  {
+   "prompt": 10308,
+   "cached": 6134,
+   "prompt_ms": 5229,
+   "gen": 600,
+   "gen_ms": 7125
+  },
+  {
+   "prompt": 10343,
+   "cached": 10303,
+   "prompt_ms": 464,
+   "gen": 600,
+   "gen_ms": 6961
+  },
+  {
+   "prompt": 13317,
+   "cached": 10342,
+   "prompt_ms": 4156,
+   "gen": 600,
+   "gen_ms": 7499
+  },
+  {
+   "prompt": 17413,
+   "cached": 13312,
+   "prompt_ms": 5275,
+   "gen": 600,
+   "gen_ms": 7503
+  },
+  {
+   "prompt": 17436,
+   "cached": 17408,
+   "prompt_ms": 304,
+   "gen": 600,
+   "gen_ms": 6936
+  },
+  {
+   "prompt": 20371,
+   "cached": 17431,
+   "prompt_ms": 4096,
+   "gen": 600,
+   "gen_ms": 7074
+  },
+  {
+   "prompt": 20410,
+   "cached": 20366,
+   "prompt_ms": 445,
+   "gen": 600,
+   "gen_ms": 6120
+  },
+  {
+   "prompt": 25272,
+   "cached": 20405,
+   "prompt_ms": 5335,
+   "gen": 600,
+   "gen_ms": 6582
+  },
+  {
+   "prompt": 25308,
+   "cached": 25267,
+   "prompt_ms": 453,
+   "gen": 600,
+   "gen_ms": 7608
+  },
+  {
+   "prompt": 25336,
+   "cached": 25303,
+   "prompt_ms": 460,
+   "gen": 600,
+   "gen_ms": 6590
+  },
+  {
+   "prompt": 30973,
+   "cached": 25335,
+   "prompt_ms": 5652,
+   "gen": 600,
+   "gen_ms": 6979
+  },
+  {
+   "prompt": 31521,
+   "cached": 30972,
+   "prompt_ms": 1894,
+   "gen": 600,
+   "gen_ms": 6697
+  },
+  {
+   "prompt": 31546,
+   "cached": 31516,
+   "prompt_ms": 248,
+   "gen": 600,
+   "gen_ms": 6590
+  },
+  {
+   "prompt": 31572,
+   "cached": 31541,
+   "prompt_ms": 367,
+   "gen": 600,
+   "gen_ms": 7122
+  },
+  {
+   "prompt": 31600,
+   "cached": 31567,
+   "prompt_ms": 298,
+   "gen": 136,
+   "gen_ms": 1606
+  },
+  {
+   "prompt": 31644,
+   "cached": 31599,
+   "prompt_ms": 299,
+   "gen": 600,
+   "gen_ms": 6963
+  }
+ ],
+ "decode_tps": 86.35,
+ "gen": 10336,
+ "final_ctx": 31644
+}

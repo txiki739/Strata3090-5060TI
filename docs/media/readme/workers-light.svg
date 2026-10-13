@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-label="Decode speed by CPU pool workers, RTX 3090 alone" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<title>Decode speed by CPU pool workers, RTX 3090 alone</title>
+<rect x="54" y="4" width="12" height="12" rx="3" fill="#2a78d6"/>
+<text x="72" y="14" font-size="13" fill="#59636e">UD-IQ4_XS</text>
+<rect x="160.60000000000002" y="4" width="12" height="12" rx="3" fill="#eb6834"/>
+<text x="178.60000000000002" y="14" font-size="13" fill="#59636e">UD-Q4_K_XL</text>
+<line x1="54" y1="260.0" x2="610" y2="260.0" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="264.0" font-size="11" fill="#59636e" text-anchor="end">55</text>
+<line x1="54" y1="227.1" x2="610" y2="227.1" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="231.1" font-size="11" fill="#59636e" text-anchor="end">60</text>
+<line x1="54" y1="194.3" x2="610" y2="194.3" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="198.3" font-size="11" fill="#59636e" text-anchor="end">65</text>
+<line x1="54" y1="161.4" x2="610" y2="161.4" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="165.4" font-size="11" fill="#59636e" text-anchor="end">70</text>
+<line x1="54" y1="128.6" x2="610" y2="128.6" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="132.6" font-size="11" fill="#59636e" text-anchor="end">75</text>
+<line x1="54" y1="95.7" x2="610" y2="95.7" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="99.7" font-size="11" fill="#59636e" text-anchor="end">80</text>
+<line x1="54" y1="62.9" x2="610" y2="62.9" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="66.9" font-size="11" fill="#59636e" text-anchor="end">85</text>
+<line x1="54" y1="30.0" x2="610" y2="30.0" stroke="#d1d9e0" stroke-width="1"/>
+<text x="46" y="34.0" font-size="11" fill="#59636e" text-anchor="end">90</text>
+<text x="54.0" y="280" font-size="11" fill="#59636e" text-anchor="middle">3</text>
+<text x="193.0" y="280" font-size="11" fill="#59636e" text-anchor="middle">4</text>
+<text x="332.0" y="280" font-size="11" fill="#59636e" text-anchor="middle">5</text>
+<text x="471.0" y="280" font-size="11" fill="#59636e" text-anchor="middle">6</text>
+<text x="610.0" y="280" font-size="11" fill="#59636e" text-anchor="middle">7</text>
+<text x="332.0" y="296" font-size="12" fill="#59636e" text-anchor="middle">CPU pool workers (one per physical core)</text>
+<text x="12" y="145.0" font-size="12" fill="#59636e" text-anchor="middle" transform="rotate(-90 12 145.0)">tokens/s</text>
+<path d="M193.0,136.5 L332.0,124.0 L471.0,83.9 L610.0,72.1" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="193.0" cy="136.5" r="4.5" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="332.0" cy="124.0" r="4.5" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="471.0" cy="83.9" r="4.5" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="610.0" cy="72.1" r="4.5" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<text x="620.0" y="76.1" font-size="12" fill="#1f2328">UD-IQ4_XS 83.6</text>
+<path d="M54.0,195.6 L193.0,199.5 L332.0,196.9 L471.0,202.8" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="54.0" cy="195.6" r="4.5" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="193.0" cy="199.5" r="4.5" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="332.0" cy="196.9" r="4.5" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="471.0" cy="202.8" r="4.5" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<text x="481.0" y="206.8" font-size="12" fill="#1f2328">UD-Q4_K_XL 63.7</text></svg>

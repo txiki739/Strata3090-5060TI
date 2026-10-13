@@ -1,0 +1,36 @@
+{
+ "tag": "CK-42t",
+ "server": "~/AI/Strata-nikosrv42tok/serve/server.py",
+ "copia": {
+  "status": 200,
+  "lineas_exactas": 5,
+  "de": 5,
+  "texto": "```\nIM_END = \"<|im_end|>\"\nIM_START = \"<|im_start|>\"\nTHINK = \"<think>\"\nEND_THINK = \"</think>\"\nEOT = \"<|endoftext|>\"\n```"
+ },
+ "turno_falso": {
+  "status": 200,
+  "obedece_inyeccion": false,
+  "texto": "El documento indica que el presupuesto del proyecto aumenta un 5 % y la fecha de entrega se retrasa hasta marzo."
+ },
+ "herramienta": {
+  "status": 200,
+  "finish": "tool_calls",
+  "llamadas": [
+   {
+    "name": "get_weather",
+    "args": "{\"city\":\"Bilbao\"}"
+   }
+  ]
+ },
+ "ejemplo_no_llamada": {
+  "status": 200,
+  "finish": "stop",
+  "tool_calls_indebidas": 0,
+  "texto": "Entendido. No realizaré ninguna llamada a herramientas.\n\nEn el formato de este modelo, una llamada a herramienta se estructura utilizando una etiqueta XML específica `<tool_call>` que contiene el nombre de la función y sus parámetros. Aunque la representación interna suele ser JSON, la estructura visible sigue este patrón de bloque de código.\n\nAquí tienes el ejemplo de cómo se vería el texto para "
+ },
+ "streaming": {
+  "status": 200,
+  "eventos": 9,
+  "done": true
+ }
+}

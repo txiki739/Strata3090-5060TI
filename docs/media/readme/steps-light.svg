@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="270" viewBox="0 0 760 270" role="img" aria-label="UD-IQ4_XS on the RTX 3090: what each change gave" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+<title>UD-IQ4_XS on the RTX 3090: what each change gave</title>
+
+
+<line x1="250.0" y1="28" x2="250.0" y2="248" stroke="#d1d9e0" stroke-width="1"/>
+<text x="250.0" y="264" font-size="11" fill="#59636e" text-anchor="middle">0</text>
+<line x1="340.0" y1="28" x2="340.0" y2="248" stroke="#d1d9e0" stroke-width="1"/>
+<text x="340.0" y="264" font-size="11" fill="#59636e" text-anchor="middle">20</text>
+<line x1="430.0" y1="28" x2="430.0" y2="248" stroke="#d1d9e0" stroke-width="1"/>
+<text x="430.0" y="264" font-size="11" fill="#59636e" text-anchor="middle">40</text>
+<line x1="520.0" y1="28" x2="520.0" y2="248" stroke="#d1d9e0" stroke-width="1"/>
+<text x="520.0" y="264" font-size="11" fill="#59636e" text-anchor="middle">60</text>
+<line x1="610.0" y1="28" x2="610.0" y2="248" stroke="#d1d9e0" stroke-width="1"/>
+<text x="610.0" y="264" font-size="11" fill="#59636e" text-anchor="middle">80</text>
+<line x1="700.0" y1="28" x2="700.0" y2="248" stroke="#d1d9e0" stroke-width="1"/>
+<text x="700.0" y="264" font-size="11" fill="#59636e" text-anchor="middle">100</text>
+<text x="240" y="45.5" font-size="13" fill="#1f2328" text-anchor="end">eddoursul custom + fixes</text>
+<path d="M250.0,34.0 h343.9 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-343.9 z" fill="#1b9247"/>
+<text x="603.9" y="45" font-size="12" fill="#59636e">77.3</text>
+<text x="240" y="75.5" font-size="13" fill="#1f2328" text-anchor="end">+ IQ4_XS AVX-2 kernel</text>
+<path d="M250.0,64.0 h347.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-347.0 z" fill="#1b9247"/>
+<text x="607.0" y="75" font-size="12" fill="#59636e">78.0</text>
+<text x="240" y="105.5" font-size="13" fill="#1f2328" text-anchor="end">+ AVX2 gather (IQ3_S)</text>
+<path d="M250.0,94.0 h360.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-360.0 z" fill="#1b9247"/>
+<text x="620.0" y="105" font-size="12" fill="#59636e">80.9</text>
+<text x="240" y="135.5" font-size="13" fill="#1f2328" text-anchor="end">+ --adapt-decay 0.92</text>
+<path d="M250.0,124.0 h370.8 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-370.8 z" fill="#1b9247"/>
+<text x="630.8" y="135" font-size="12" fill="#59636e">83.3</text>
+<text x="240" y="165.5" font-size="13" fill="#1f2328" text-anchor="end">+ upstream PRs #863, #851, #606</text>
+<path d="M250.0,154.0 h372.2 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-372.2 z" fill="#1b9247"/>
+<text x="632.2" y="165" font-size="12" fill="#59636e">83.6</text>
+<text x="240" y="195.5" font-size="13" fill="#1f2328" text-anchor="end">+ elastic K/V (--kv-grow)</text>
+<path d="M250.0,184.0 h405.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-405.0 z" fill="#1b9247"/>
+<text x="665.0" y="195" font-size="12" fill="#59636e">90.9</text>
+<text x="240" y="225.5" font-size="13" fill="#1f2328" text-anchor="end">+ fused CPU pool</text>
+<path d="M250.0,214.0 h414.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-414.0 z" fill="#1b9247"/>
+<text x="674.0" y="225" font-size="12" fill="#59636e">92.9</text></svg>
