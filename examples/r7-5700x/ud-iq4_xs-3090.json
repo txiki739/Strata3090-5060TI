@@ -41,11 +41,14 @@
     "7",
     "--adapt-decay",
     "0.92",
+    "--ple-io",
+    "ram",
     "--kv-grow"
   ],
   "cwd": ".",
   "tokenizer": "../Strata-data/packs/ud-iq4_xs/tokenizer",
   "model_name": "UD-IQ4_XS",
+  "env_to_user": true,
   "lib_dirs": [],
   "env": {
     "STRATA_IQ256_GATHER": "1",

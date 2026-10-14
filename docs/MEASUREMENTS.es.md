@@ -46,6 +46,8 @@ publica ahora midió lo mismo con UD-IQ4_XS (74,8 % frente a 75,1 % de borradore
 | `--pcie-frac` (kernel) | 0 | 0 | 0,3 | 0 |
 | Segunda GPU | - | `--second-gpu 0`, reserva 512 MiB, prefetch 6 MB, `--head-split 0.45` | - | igual que IQ4_XS |
 | `--kv-grow` | sí | sí | sí | sí |
+| `--ple-io ram` | sí | sí | - | sí |
+| `env_to_user` | sí | sí | sí | sí |
 | `STRATA_POOL_FUSED` | 1 | 1 | 1 | 1 |
 
 ## Cómo se ha medido
@@ -207,3 +209,21 @@ Otros ajustes probados en este equipo sin ganancia: más workers que 7 (UD-IQ4_X
 
 En esta CPU con SMT, el arreglo de Linux de esta rama (un worker por núcleo físico) llevó UD-Q4_K_XL con la 3090 de
 50,7 tok/s (15 workers en 16 procesadores lógicos) a 58,1 (7 workers en 7 núcleos), antes del resto del afinado.
+
+## 2026-10-14
+
+- **`--ple-io ram` en la config de UD-IQ4_XS con la 3090 sola**: el prompt de 18.076 tokens 1.855 -> 2.336 tok/s
+  (+26 %) y 3.340 tokens 862 -> 944 (+9,5 %), con todos los textos medidos bit a bit; los pines de expertos en VRAM
+  probados el mismo día dieron -8 % (8 GiB) o ni arrancaron (12 GiB: el pin se come el préstamo de la K/V elástica),
+  así que se quedan apagados ([a1](../bench/results/2026-10-14-a1-iq4xs-3090-ple/)).
+- **`env_to_user: true` en todas las configs**: el servidor mueve el bloque `<env>` de los clientes de agente del turno
+  de sistema al primer mensaje de usuario, y una sesión nueva en otra carpeta/día reutiliza la caché de prompts en vez
+  de releer el sistema entero: 6,2 s -> 0,5-0,6 s (12.671 de 12.720 tokens desde caché). Solo afecta a las peticiones
+  que llevan bloque `<env>` ([a2](../bench/results/2026-10-14-a2-env-to-user/)).
+- **El layout `ncols > 1` de upstream, medido en sm_86** (lo que pedía su propio comentario en `native_mmvq.cu`): -1,6 %
+  de decode en la 3090 sola sobre seis pruebas (una pasada por brazo) y +2,3 % en el par, cuyos bits difieren entre
+  brazos; el layout exacto se queda por defecto con su garantía bit a bit. La 0.1.44 de upstream (`945fee23`) eligió
+  una fila por bloque para sm_86 desde el otro lado ([b1](../bench/results/2026-10-14-b1-multi-exact/)).
+- **MMQ del camino de prompt medido como ya por defecto**: `STRATA_PREFILL_MMQ=0` cuesta un 4-11 % de prompt
+  (18.076 tokens 1.705 -> 1.638 tok/s; 5.296 901 -> 813), decode igual
+  ([b2](../bench/results/2026-10-14-b2-mmq-check/)).

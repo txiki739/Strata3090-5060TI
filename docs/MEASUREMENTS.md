@@ -46,6 +46,8 @@ draft head.
 | `--pcie-frac` (kernel) | 0 | 0 | 0.3 | 0 |
 | Second GPU | - | `--second-gpu 0`, 512 MiB reserve, 6 MB prefetch, `--head-split 0.45` | - | same as IQ4_XS |
 | `--kv-grow` | on | on | on | on |
+| `--ple-io ram` | on | on | - | on |
+| `env_to_user` | on | on | on | on |
 | `STRATA_POOL_FUSED` | 1 | 1 | 1 | 1 |
 
 ## How it was measured
@@ -202,3 +204,21 @@ UD-Q4_K_XL, `--pcie-frac` above 0.3, the GPUs' stock power limits.
 
 On this SMT CPU the Linux fix in this branch (one pool worker per physical core) took UD-Q4_K_XL on the 3090 from
 50.7 tok/s (15 workers on 16 logical processors) to 58.1 (7 workers on 7 cores), before the later tuning.
+
+## 2026-10-14
+
+- **`--ple-io ram` on the single-3090 UD-IQ4_XS config**: the 18,076-token prompt 1,855 -> 2,336 tok/s (+26%) and
+  3,340 tokens 862 -> 944 (+9.5%), every measured text bit-identical; the VRAM-pinned experts tried the same day gave
+  -8% (8 GiB) or did not start (12 GiB: the pin eats the elastic K/V's loan), so they stay off
+  ([a1](../bench/results/2026-10-14-a1-iq4xs-3090-ple/)).
+- **`env_to_user: true` in every config**: the server moves the agent client's `<env>` block from the system turn into
+  the first user turn, so a new session in another folder/day reuses the prompt cache instead of re-reading the whole
+  system block: 6.2 s -> 0.5-0.6 s (12,671 of 12,720 tokens cached). Only requests carrying an `<env>` block are
+  affected ([a2](../bench/results/2026-10-14-a2-env-to-user/)).
+- **The upstream `ncols > 1` layout timed on sm_86** (what its own comment in `native_mmvq.cu` asked for): -1.6%
+  decode on the 3090 alone over six shapes (one sweep per arm) and +2.3% on the pair, whose bits differ between the
+  arms; the exact layout keeps the default and its bit-for-bit guarantee. Upstream 0.1.44's `945fee23` picked one row
+  per block for sm_86 from the other side ([b1](../bench/results/2026-10-14-b1-multi-exact/)).
+- **MMQ on the prompt path measured as already the default**: `STRATA_PREFILL_MMQ=0` costs 4-11% of prompt throughput
+  (18,076 tokens 1,705 -> 1,638 tok/s; 5,296 901 -> 813), decode unchanged
+  ([b2](../bench/results/2026-10-14-b2-mmq-check/)).

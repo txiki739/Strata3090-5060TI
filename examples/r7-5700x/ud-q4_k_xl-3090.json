@@ -42,6 +42,7 @@
   "cwd": ".",
   "tokenizer": "../Strata-data/packs/ud-q4_k_xl/tokenizer",
   "model_name": "UD-Q4_K_XL",
+  "env_to_user": true,
   "lib_dirs": [],
   "env": {
     "STRATA_POOL_FUSED": "1"
