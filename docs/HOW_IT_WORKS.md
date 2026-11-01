@@ -123,13 +123,16 @@ A request continues from the longest start of its prompt that the engine still h
 
 - **The live conversation**: a follow-up turn reads only its new tokens.
 - **Checkpoints** of the sequence's fixed-size state (the DeltaNet states, the indexer's and the embeddings' recent
-  history: 113 MiB each, 16 by default, in pinned RAM), taken before the last turn of a prompt, at its end, and along
-  long prompts. The K/V is indexed by position, so going back to a checkpoint copies only the state: a client that
-  rewrites the end of its history (an agent's last message, a regenerated answer) is read again from the checkpoint
-  before it.
-- **Conversations kept in RAM**: one that another request replaces moves to RAM with its K/V (`--cache-ram`), and a
-  request that continues it later takes it back. One that shares only its start with it (subagents of one agent,
-  sessions with one system prompt) borrows that start.
+  history: 113 MiB each, up to 6 per conversation by default, in pinned RAM), taken before the last turn of a prompt,
+  at its end, and along long prompts. Each conversation owns its chain: over the cap its own oldest leaf leaves
+  (the root, the point every prompt shares, stays). The K/V is indexed by position, so going back to a checkpoint
+  copies only the state: a client that rewrites the end of its history (an agent's last message, a regenerated
+  answer) is read again from the checkpoint before it.
+- **Conversations parked in RAM**: one that another request replaces moves to RAM with its K/V and its own
+  checkpoints (`--conversation-cache-mib`, `--conversation-cache-slots`), and a request that continues it later
+  takes it back. One that shares only its start with it (subagents of one agent, sessions with one system prompt)
+  borrows that start. A parked conversation leaves only whole - least recently used first, never while it lends
+  its start - so a chatty conversation can never drain a parked one's memory out from under it.
 
 The API reports how many prompt tokens were reused (`cached_tokens`, `cache_read_input_tokens`).
 

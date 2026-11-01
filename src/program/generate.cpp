@@ -236,13 +236,23 @@ struct Options {
     bool serve = false;
     /// The vision path: keep a per-cell (t, h, w) rotary position table so --serve can take GENI requests.
     bool vision = false;
-    /// --serve prompt cache: checkpoints of the sequence state kept in host memory (0 = every request starts
-    /// from an empty sequence).  A request continues from the longest prefix the session or a checkpoint holds.
-    int prompt_cache = 16;
-    /// Host memory for sequences the live one replaced (their K/V cells), in MiB.
-    int64_t cache_ram_mib = 16384;
+    /// --serve prompt cache: checkpoints of the sequence state each conversation keeps in host memory (0 = every
+    /// request starts from an empty sequence).  A request continues from the longest prefix the session, one of
+    /// the conversation's own checkpoints, or a parked conversation holds.
+    int prompt_cache = 6;
+    /// --conversation-cache-mib: host memory for parked conversations (their K/V cells and their checkpoint
+    /// chains), in MiB.  A parked conversation leaves only whole, least recently used first (0 = no parking).
+    int64_t conversation_cache_mib = 8192;
+    /// --conversation-cache-slots: at most this many parked conversations whatever their length.
+    int conversation_cache_slots = 4;
+    /// --conversation-cache-min-tokens: park only conversations of at least this many tokens, so short side
+    /// requests do not take the slots a long conversation needs.  0 = park every conversation.
+    int64_t conversation_cache_min_tokens = 1024;
+    /// --prompt-cache-spread: thin a conversation's chain geometrically back from its newest instead of the
+    /// root-pinned least-recent-use default (better for edits far back, worse for the recent turns).
+    bool prompt_cache_spread = false;
     /// Checkpoint interval inside long prompts, in whole prompt chunks (counted from the request's first new cell).
-    int64_t cache_every = 16384;
+    int64_t prompt_cache_every = 16384;
     /// Prompt parts of up to this many tokens go through verify windows instead of the batched prompt path: a new
     /// part that short, and a last prompt chunk that short.  A batched call has a fixed cost (it lends and refills
     /// expert-cache slots and reads every expert its tokens use): ~0.55 s with a second GPU, ~1.6 s with IQ3_XXS on
@@ -315,13 +325,20 @@ void usage() {
                  "  --dump-routing PATH  write the routed expert ids and weights per layer per position\n"
                  "  --serve              stay resident and take requests on stdin, as serve/server.py sends them\n"
                  "  --vision             --serve takes images too (GENI requests; embeddings from lamina-vision)\n"
-                 "  --prompt-cache N     --serve: keep N checkpoints of the sequence state in host memory and\n"
-                 "                       continue each request from the longest cached prefix (default 16;\n"
+                 "  --prompt-cache N     --serve: keep N checkpoints of the sequence state per conversation and\n"
+                 "                       continue each request from the longest cached prefix (default 6;\n"
                  "                       0 = every request starts from an empty sequence)\n"
-                 "  --cache-every N      checkpoint interval inside long prompts, rounded down to whole --prefill\n"
+                 "  --prompt-cache-every N  checkpoint interval inside long prompts, rounded down to whole --prefill\n"
                  "                       chunks (default 16384)\n"
-                 "  --cache-ram MIB      --serve: host memory for the K/V cells of sequences a request replaced,\n"
-                 "                       so switching back to them continues where they were (default 16384)\n"
+                 "  --prompt-cache-spread  thin a conversation's checkpoints geometrically back from its newest\n"
+                 "                       instead of the root-pinned least-recent-use default\n"
+                 "  --conversation-cache-mib MIB  --serve: host memory for parked conversations (their K/V cells\n"
+                 "                       and their checkpoint chains), so switching back to them continues where\n"
+                 "                       they left off; a parked conversation leaves only whole, oldest first\n"
+                 "                       (default 8192)\n"
+                 "  --conversation-cache-slots N  --serve: at most N parked conversations (default 4)\n"
+                 "  --conversation-cache-min-tokens N  --serve: park only conversations of at least N tokens, so\n"
+                 "                       short side requests do not take the slots a long one needs (default 1024)\n"
                  "  --feed-max N         --serve: new prompt parts and last prompt chunks of up to N tokens run\n"
                  "                       through verify windows instead of the batched prompt path (default 128)\n"
                  "  --tail-role-token ID --serve: a turn of this role right before the last turn stays out of the\n"
@@ -1208,8 +1225,11 @@ int lamina::program::run(int argc, char** argv) {
         else if (a == "--serve") o.serve = true;
         else if (a == "--vision") o.vision = true;
         else if (a == "--prompt-cache") o.prompt_cache = std::max(0, std::atoi(next("--prompt-cache")));
-        else if (a == "--cache-every") o.cache_every = std::max<int64_t>(1, std::atoll(next("--cache-every")));
-        else if (a == "--cache-ram") o.cache_ram_mib = std::max<int64_t>(0, std::atoll(next("--cache-ram")));
+        else if (a == "--prompt-cache-every") o.prompt_cache_every = std::max<int64_t>(1, std::atoll(next("--prompt-cache-every")));
+        else if (a == "--prompt-cache-spread") o.prompt_cache_spread = true;
+        else if (a == "--conversation-cache-mib") o.conversation_cache_mib = std::max<int64_t>(0, std::atoll(next("--conversation-cache-mib")));
+        else if (a == "--conversation-cache-slots") o.conversation_cache_slots = std::max(0, std::atoi(next("--conversation-cache-slots")));
+        else if (a == "--conversation-cache-min-tokens") o.conversation_cache_min_tokens = std::max<int64_t>(0, std::atoll(next("--conversation-cache-min-tokens")));
         else if (a == "--feed-max") o.feed_max = std::max<int64_t>(0, std::atoll(next("--feed-max")));
         else if (a == "--tail-role-token") o.tail_role_token = std::atoll(next("--tail-role-token"));
         else if (a == "--eos-ids") {
@@ -3038,13 +3058,16 @@ int lamina::program::run(int argc, char** argv) {
         std::vector<lamina::core::QsaState*> kv_states;
         for (int64_t i = 0; i < g.n_qsa_layers(); ++i) kv_states.push_back(&ss.qsa_states[i]);
         kv_states.push_back(&mtp.kv_state());
-        lamina::core::PromptCache pcache(g, ss, kv_states, main_cs, o.prompt_cache, (uint64_t) o.cache_ram_mib << 20);
-        // the elastic K/V: a stashed sequence's restore (or the live one's stash) copies all its cells
+        lamina::core::PromptCache pcache(g, ss, kv_states, main_cs, o.prompt_cache,
+                                         (uint64_t) o.conversation_cache_mib << 20, (size_t) o.conversation_cache_slots,
+                                         o.conversation_cache_min_tokens, o.prompt_cache_spread);
+        // the elastic K/V: a parked conversation's restore (or the live one's park) copies all its cells
         if (kvg.on) pcache.ensure_kv = [&](int64_t cells) { return kvg_ensure(cells + 256); };
         if (pcache.enabled())
-            std::fprintf(stderr, "lamina serve: prompt cache on: up to %d checkpoints of %.1f MiB, %lld MiB for stashed "
-                                 "sequences\n", o.prompt_cache, (double) pcache.ckpt_bytes() / 1048576.0,
-                         (long long) o.cache_ram_mib);
+            std::fprintf(stderr, "lamina serve: prompt cache on: up to %d checkpoints of %.1f MiB per conversation, "
+                                 "%lld MiB for up to %d parked conversations\n", o.prompt_cache,
+                         (double) pcache.ckpt_bytes() / 1048576.0, (long long) o.conversation_cache_mib,
+                         o.conversation_cache_slots);
         // stdin is read on its own thread, so a STOP line reaches a request that is still running (the client went
         // away, or pressed Esc): the flag is checked between prompt chunks and between verify windows.
         std::atomic<bool> stop_req{false};
@@ -3524,9 +3547,9 @@ int lamina::program::run(int argc, char** argv) {
                 for (TierSlot& ts : tiers) ts.adapt.apply_pending(true);
                 tr("prompt tiers landed");
                 // --prompt-split: a prompt of more than one chunk, when the second GPU can lend the split's bytes.
-                // The checkpoints every --cache-every cells fall at the chunks' ends.
+                // The checkpoints every --prompt-cache-every cells fall at the chunks' ends.
                 const int64_t chunk = prompt_chunk(batched_end - reuse, o.prefill_chunk, pbuf.offload != nullptr);
-                const int64_t step = std::max<int64_t>(1, o.cache_every / o.prefill_chunk) * chunk;
+                const int64_t step = std::max<int64_t>(1, o.prompt_cache_every / o.prefill_chunk) * chunk;
                 const bool split_try = pbuf.split != nullptr && batched_end - reuse > o.prefill_chunk;
                 if (!pbuf.take(chunk, err, split_try ? psplit.bytes_for(chunk, batched_end) : 0)) { report(err); return 1; }
                 tr("prompt slots lent", chunk);
@@ -3633,7 +3656,7 @@ int lamina::program::run(int argc, char** argv) {
                         if (track && c > from && c < to) {
                             if (!feed(from, c)) return false;
                             if (poison_at >= 0) return true;
-                            pcache.checkpoint(c);
+                            pcache.checkpoint(c, true);   // a fork / msg_end cut: a tail, the first to go
                             from = c;
                         }
                     return feed(from, to);
