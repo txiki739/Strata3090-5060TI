@@ -70,7 +70,7 @@ class File:
 
 
 IQ3_S = [
-    File("ista", f"Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-0000{i}-of-00002.gguf",
+    File("ista", f"IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-0000{i}-of-00002.gguf",
          f"models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-0000{i}-of-00002.gguf", size, sha)
     for i, size, sha in (
         (1, 54817524224, "4c1eb2ceb4915e1192f4f386021897bde56a97f40a0bb78bb86465e0f7d2aca3"),
