@@ -389,7 +389,7 @@ __device__ __forceinline__ void gu_h_pass(const uint8_t* wg, const uint8_t* wu, 
 }
 
 template<int TG>
-__global__ void __launch_bounds__(GUS_WARPS * 32, 2) native_gu_h_kernel(const unsigned long long* __restrict__ grp_ptr,
+__global__ void __launch_bounds__(GUS_WARPS * 32, 1) native_gu_h_kernel(const unsigned long long* __restrict__ grp_ptr,
                                                                         const int32_t* __restrict__ grp_start,
                                                                         const int32_t* __restrict__ n_groups,
                                                                         const int32_t* __restrict__ ent_tok,

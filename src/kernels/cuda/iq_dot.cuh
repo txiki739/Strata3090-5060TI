@@ -822,15 +822,23 @@ __device__ __forceinline__ void tqp_states8(const uint8_t* __restrict__ qs, int 
     const int wi1 = wb + 1 >= nwords ? wb + 1 - nwords : wb + 1;
     const int wi2 = wb + 2 >= nwords ? wb + 2 - nwords : wb + 2;
     const int wi3 = wb + 3 >= nwords ? wb + 3 - nwords : wb + 3;
-    uint64_t v = (uint64_t) qs16[wb] | ((uint64_t) qs16[wi1] << 16) | ((uint64_t) qs16[wi2] << 32) |
-                 ((uint64_t) qs16[wi3] << 48);
-    v >>= r;
-    if constexpr (8 + 7 * K + TQ_STATE_BITS > 64) {
-        const int wi4 = wb + 4 >= nwords ? wb + 4 - nwords : wb + 4;
-        v |= r ? (uint64_t) qs16[wi4] << (64 - r) : 0;
+    // 32-bit windows: a 64-bit shift takes three instructions a state (S is a multiple of 16 for even K, r only for odd K)
+    uint32_t lo = (uint32_t) qs16[wb] | ((uint32_t) qs16[wi1] << 16), hi = (uint32_t) qs16[wi2] | ((uint32_t) qs16[wi3] << 16);
+    if constexpr (K % 2 != 0) {
+        lo = (lo >> r) | ((hi << 8) << (24 - r));   // r is 0 or 8: never a shift by 32
+        if constexpr (K > 5) {
+            const int wi4 = wb + 4 >= nwords ? wb + 4 - nwords : wb + 4;
+            hi = (hi >> r) | (((uint32_t) qs16[wi4] << 8) << (24 - r));
+        } else {
+            hi >>= r;
+        }
     }
 #pragma unroll
-    for (int j = 0; j < 8; ++j) s[j] = (uint32_t) (v >> ((7 - j) * K)) & TQ_STATE_MASK;
+    for (int j = 0; j < 8; ++j) {
+        const int sh = (7 - j) * K;
+        const uint32_t v = sh >= 32 ? hi >> (sh - 32) : sh + TQ_STATE_BITS <= 32 ? lo >> sh : (lo >> sh) | (hi << (32 - sh));
+        s[j] = v & TQ_STATE_MASK;
+    }
 }
 template<int K>
 struct SplitTqp {
