@@ -105,6 +105,8 @@ public:
     size_t size() const { return entries_.size(); }
     bool empty() const { return entries_.empty(); }
     size_t evictions() const { return evictions_; }
+    uint64_t budget() const { return budget_; }
+    size_t slots() const { return slots_; }
     /// Bytes held: every parked conversation's K/V copy plus its chain's buffers.
     uint64_t bytes() const {
         uint64_t n = 0;

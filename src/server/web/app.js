@@ -295,6 +295,20 @@ function renderMonitor(live, hw, st, eng, h, last, requests, totals, kept) {
   $("temp-text").textContent = hw.gpu_temp == null ? "–" : `${fmt(hw.gpu_temp)} °C`;
   $("temp-bar").style.width = hw.gpu_temp == null ? "0%" : `${Math.min(100, hw.gpu_temp)}%`;
 
+  // the prompt cache: parked conversations of the park's budget (the CACHE line; hidden until the engine's first)
+  const c = live.cache, cacheRow = $("cache-row"), cacheProg = $("cache-progress");
+  cacheRow.hidden = cacheProg.hidden = c == null;
+  if (c) {
+    $("cache-text").textContent = `${fmt(c.parked)}/${fmt(c.slots)} waiting · ${c.live > 0 ? 1 : 0} active · ${gb(c.parked_bytes)} GB` +
+      (c.evictions > 0 ? ` · ${fmt(c.evictions)} eviction${c.evictions === 1 ? "" : "s"}` : "");
+    $("cache-text").title = `waiting: whole conversations cached and ready to resume; active: the one being answered now. ` +
+      `The active conversation holds ${fmt(c.live)} cells and ${fmt(c.checkpoints)} checkpoints; ` +
+      `waiting conversations use ${gb(c.parked_bytes)} of the ${gb(c.parked_budget, 0)} GB park (${fmt(c.slots)} slots, ` +
+      `${fmt(c.evictions)} evictions)`;
+    $("cache-bar").style.width = c.parked_budget ? `${Math.min(100, (100 * c.parked_bytes) / c.parked_budget)}%` : "0%";
+    if (c.evictions > 0) cacheProg.dataset.tone = "warn"; else delete cacheProg.dataset.tone;   // an eviction: a conversation lost its cache
+  }
+
   // recent requests
   const body = $("req-body");
   if (!requests.length) {

@@ -276,6 +276,18 @@ void PromptCache::clear() {
     for (Seq& s : parked_.drain()) free_ckpts(s);
 }
 
+PromptCache::State PromptCache::state() const {
+    State s;
+    s.live_cells = (int64_t) live_.tokens.size();
+    s.checkpoints = live_.ckpts.size();
+    s.parked = parked_.size();
+    s.parked_bytes = parked_.bytes();
+    s.parked_budget = parked_.budget();
+    s.slots = parked_.slots();
+    s.evictions = parked_.evictions();
+    return s;
+}
+
 std::string PromptCache::summary() const {
     char buf[256];
     std::snprintf(buf, sizeof buf,

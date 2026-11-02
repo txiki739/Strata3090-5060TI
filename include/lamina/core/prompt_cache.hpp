@@ -80,6 +80,17 @@ public:
     /// One line for the log: the live chain, the park's contents and its evictions.
     std::string summary() const;
 
+    /// The cache's state for the Monitor (the CACHE line): the live chain, the park's contents, its budgets
+    /// and its evictions.
+    struct State {
+        int64_t live_cells = 0;
+        size_t checkpoints = 0;
+        size_t parked = 0;
+        uint64_t parked_bytes = 0, parked_budget = 0;
+        size_t slots = 0, evictions = 0;
+    };
+    State state() const;
+
 private:
     /// One device region of the K/V cells, stored back to back in a parked conversation's buffer.
     struct Part { void* dev; uint64_t bytes; };

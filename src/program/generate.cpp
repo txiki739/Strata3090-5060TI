@@ -3877,6 +3877,15 @@ int lamina::program::run(int argc, char** argv) {
             serve_print("TIERS main_swaps=%lld main_fills=%lld main_dropped=%lld%s deterministic_adapt=%d\n",
                         (long long) (t1.main_swaps - t0.main_swaps), (long long) (t1.main_fills - t0.main_fills),
                         (long long) (t1.main_dropped - t0.main_dropped), per_tier.c_str(), o.deterministic_adapt ? 1 : 0);
+            // the prompt cache's state for the Monitor's Conversation cache card (before DONE: the request
+            // loop reads lines until DONE, and this is the state the request leaves behind)
+            if (pcache.enabled()) {
+                const auto cs = pcache.state();
+                serve_print("CACHE live=%lld checkpoints=%zu parked=%zu parked_bytes=%llu parked_budget=%llu "
+                            "slots=%zu evictions=%zu\n",
+                            (long long) cs.live_cells, cs.checkpoints, cs.parked, (unsigned long long) cs.parked_bytes,
+                            (unsigned long long) cs.parked_budget, cs.slots, cs.evictions);
+            }
             // DONE <generated> <prompt> <prompt ms> <decode ms> <finish> <drafts accepted> <drafts offered> <reused>
             // <expert-cache hits> <lookups>
             serve_print("DONE %lld %lld %.1f %.1f %s %lld %lld %lld %lld %lld\n", (long long) produced_n, (long long) n,
