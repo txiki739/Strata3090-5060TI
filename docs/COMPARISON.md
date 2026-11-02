@@ -231,13 +231,18 @@ four-token windows. Any change of rounding moves 2-4% of the thinking text's arg
 <!-- matrix:parity -->
 | | Code, ~260 tokens | Thinking, 1,200 | After the 16K prompt, 300 |
 |---|---|---|---|
-| IQ3_S: Lamina vs llama.cpp | 99.6%, 6.9e-04 | 97.3%, 4.0e-03 | 98.7%, 2.3e-03 |
+| IQ3_S: Lamina vs llama.cpp | 99.6%, 9.8e-04 | 97.2%, 3.6e-03 | 98.3%, 2.2e-03 |
 | llama.cpp's CPU vs CUDA backend | 100.0%, 1.5e-04 | 97.7%, 2.6e-03 | 98.7%, 1.5e-03 |
-| Lamina, one-token vs four-token windows | 100.0%, 1.7e-04 | 97.7%, 2.7e-03 | 99.3%, 8.6e-04 |
-| UD-Q4_K_XL: Lamina vs llama.cpp | 99.2%, 6.0e-04 | 95.8%, 6.2e-03 | 98.3%, 3.9e-03 |
+| Lamina, one-token vs four-token windows | 100.0%, 2.4e-04 | 98.1%, 2.7e-03 | 98.7%, 5.2e-04 |
+| UD-Q4_K_XL: Lamina vs llama.cpp | 98.9%, 6.1e-04 | 96.1%, 6.0e-03 | 98.3%, 3.7e-03 |
 | llama.cpp's CPU vs CUDA backend | 100.0%, 1.7e-04 | 97.7%, 2.8e-03 | 98.7%, 1.5e-03 |
-| Lamina, one-token vs four-token windows | 99.6%, 1.4e-04 | 97.9%, 2.1e-03 | 98.0%, 5.5e-04 |
+| Lamina, one-token vs four-token windows | 98.9%, 1.2e-04 | 98.0%, 2.2e-03 | 98.3%, 5.8e-04 |
 <!-- /matrix:parity -->
+
+Against exact arithmetic on UD-Q4_K_XL's weights (llama.cpp's CPU backend with dequantized weights, FP32 activations and F32 K and V),
+argmax agreement and KL: on the thinking text Lamina 97.8%, 2.0e-3; llama.cpp's backends 96.3%, 6.0e-3. On human text (the five texts and six
+of the Wikipedia articles below, 10,912 tokens) Lamina 95.9%, 0.019; llama.cpp's CPU backend 94.6%, 0.029. The text's perplexity does not respond:
+against exact Lamina x1.002 (90% interval 0.998-1.006), llama.cpp's CPU backend x0.996 (0.990-1.002).
 
 ## The files
 
@@ -247,17 +252,17 @@ replaced in Lamina's configs, 1.9215 (+1.9%). IQ3_S's experts take 46.8 GiB, UD-
 generates 30-68% faster on fixed text; with both GPUs it reads prompts 8% slower to 4% faster, on the 3090 alone
 1.45-1.54x as fast.
 
-Each file against UD-Q4_K_XL in Lamina itself, along fixed human text (each position's 64 likeliest tokens, deterministic, a target
-below them taking the 64th's log-probability), argmax agreement, KL and the text's perplexity:
+Each file against UD-Q4_K_XL in Lamina itself at one build (33f63cf1), along fixed human text (each position's 64 likeliest tokens,
+deterministic, a target below them taking the 64th's log-probability), argmax agreement, KL and the text's perplexity:
 
 | Text | IQ3_S | Gyro-L, abliterated |
 |---|---|---|
-| Code, docs, English, mixed languages, an agent's session (4,960 tokens) | 87.0%, 0.145, x1.006 (90% interval spans 1) | 87.9%, 0.120, x0.977 (spans 1) |
-| Wikipedia in Polish, Finnish, Czech, Hungarian, Turkish, Ukrainian, Korean (6,944) | 88.6%, 0.101, x1.026 | 90.3%, 0.078, x1.018 |
+| Code, docs, English, mixed languages, an agent's session (4,960 tokens) | 86.7%, 0.150, x1.004 (90% interval spans 1) | 88.2%, 0.120, x0.974 |
+| Wikipedia in Polish, Finnish, Czech, Hungarian, Turkish, Ukrainian, Korean (6,944) | 88.5%, 0.103, x1.030 | 90.1%, 0.078, x1.019 |
 
-Gyro-L's lead on the first row's perplexity comes from the agent's session alone (x0.864); on the other four texts it stands at
-x0.986-1.021. These are distances from another quantization, not from the original weights, and the abliterated build differs from
-its base by design: Agention's own table against Q8_0 (another corpus) gives UD-Q4_K_XL 0.078, Gyro-L 0.146 and its abliterated build
+Gyro-L's lead on the first row's perplexity comes from the agent's session alone (x0.858), a text that rounding alone moves by 4-6%
+(the same file in stock against exact arithmetic x0.958); on the other four texts it stands at x0.991-1.016. These are distances from
+another quantization, not from the original weights, and the abliterated build differs from its base by design: Agention's own table against Q8_0 (another corpus) gives UD-Q4_K_XL 0.078, Gyro-L 0.146 and its abliterated build
 0.164.
 
 ## Qwen3.6-35B-A3B
