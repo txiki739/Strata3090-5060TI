@@ -98,7 +98,7 @@ function(lamina_ggml_tq_overlay LLAMA OUT)
   # ---- mmq-load-tiles.cuh: the loader, at the end -------------------------------------------------------------------
   _tq_read(_l "${_cu}/mmq-load-tiles.cuh")
   file(WRITE "${OUT}/mmq-load-tiles.cuh" "${_l}\n#include \"tq-mmq-tiles.cuh\"\n")
-  foreach(_n tq.cuh tq-mmq-tiles.cuh ggml-common-tq.h tq_lut_i8.cuh)
+  foreach(_n tq.cuh tq-mmq-tiles.cuh ggml-common-tq.h tq_lut_i8.cuh tq_states8.cuh)
     configure_file("${_tq}/${_n}" "${OUT}/${_n}" COPYONLY)
   endforeach()
 

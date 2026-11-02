@@ -14,6 +14,7 @@
 #include "ggml-common.h"
 #include "ggml-common-tq.h"
 #include "tq_lut_i8.cuh"
+#include "tq_states8.cuh"
 #include "lamina/kernels/dp4a.hpp"
 #include "lamina/kernels/warp.cuh"
 #include <type_traits>
@@ -809,37 +810,9 @@ template<> struct Split<42> : SplitNoGrid {   // Q2_0
         return w.d2 * a.d8 * sumi;
     }
 };
-// Gyro-L's pair trellis (TQP5, TQP6, TQP7: third_party/ggml-tq): a call is a lane of 8 steps, 16 weights.  The steps' 15-bit states
-// lie in the 64 bits from stream bit S = (56 - 8l) * K, a whole number of bytes, so r = S & 15 is 0 or 8 and five u16 words wrapped
-// over the block's 4 * K cover them (the fifth only when K > 5); qs is 2-byte aligned, every trellis block being of even size.  A
-// state hashes to a point of the int8 codebook (`grid`, one global scale): two weights, so the lane's 16 are 4 ints of int8 and
-// the dot is 4 dp4a.  The lane reads half of q8_1 block l / 2.
-template<int K>
-__device__ __forceinline__ void tqp_states8(const uint8_t* __restrict__ qs, int l, uint32_t (&s)[8]) {
-    constexpr int nwords = 4 * K;
-    const uint16_t* qs16 = (const uint16_t*) qs;
-    const int S = (56 - 8 * l) * K, wb = S >> 4, r = S & 15;
-    const int wi1 = wb + 1 >= nwords ? wb + 1 - nwords : wb + 1;
-    const int wi2 = wb + 2 >= nwords ? wb + 2 - nwords : wb + 2;
-    const int wi3 = wb + 3 >= nwords ? wb + 3 - nwords : wb + 3;
-    // 32-bit windows: a 64-bit shift takes three instructions a state (S is a multiple of 16 for even K, r only for odd K)
-    uint32_t lo = (uint32_t) qs16[wb] | ((uint32_t) qs16[wi1] << 16), hi = (uint32_t) qs16[wi2] | ((uint32_t) qs16[wi3] << 16);
-    if constexpr (K % 2 != 0) {
-        lo = (lo >> r) | ((hi << 8) << (24 - r));   // r is 0 or 8: never a shift by 32
-        if constexpr (K > 5) {
-            const int wi4 = wb + 4 >= nwords ? wb + 4 - nwords : wb + 4;
-            hi = (hi >> r) | (((uint32_t) qs16[wi4] << 8) << (24 - r));
-        } else {
-            hi >>= r;
-        }
-    }
-#pragma unroll
-    for (int j = 0; j < 8; ++j) {
-        const int sh = (7 - j) * K;
-        const uint32_t v = sh >= 32 ? hi >> (sh - 32) : sh + TQ_STATE_BITS <= 32 ? lo >> sh : (lo >> sh) | (hi << (32 - sh));
-        s[j] = v & TQ_STATE_MASK;
-    }
-}
+// Gyro-L's pair trellis (TQP5, TQP6, TQP7: third_party/ggml-tq): a call is a lane of 8 steps (tq_states8.cuh), 16 weights.  A state
+// hashes to a point of the int8 codebook (`grid`, one global scale): two weights, so the lane's 16 are 4 ints of int8 and the dot is
+// 4 dp4a.  The lane reads half of q8_1 block l / 2.
 template<int K>
 struct SplitTqp {
     using A = SplitAct<4>;

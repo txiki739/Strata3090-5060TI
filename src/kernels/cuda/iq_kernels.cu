@@ -110,6 +110,7 @@ __global__ void __launch_bounds__(GUS_WARPS * 32, gus_min_blocks<TG>()) native_g
     __shared__ float sh[GUS_BATCH][32];
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, c = blockIdx.x;
     const uint8_t* wg = (const uint8_t*) grp_ptr[g] + (size_t) (32 * c + GUS_ROWS * warp) * L.gu_row;
+    __builtin_assume(__isGlobal(wg));
     const uint8_t* wu = wg + L.up_off;
     const int nb = (int) (L.n_embd / F::qk), xb = (int) (L.n_embd / 32), hb = (int) (L.n_ff / 32);
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
@@ -167,6 +168,7 @@ __global__ void __launch_bounds__(DOWN_WARPS * 32) native_down_kernel(const unsi
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int r0 = (blockIdx.x * DOWN_WARPS + warp) * DOWN_ROWS;
     const uint8_t* wr = (const uint8_t*) grp_ptr[g] + L.down_off + (size_t) r0 * L.d_row;
+    __builtin_assume(__isGlobal(wr));
     const int nb = (int) (L.n_ff / F::qk), hb = (int) (L.n_ff / 32);
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
     for (int e = e0; e < e1; ++e) {
@@ -219,7 +221,11 @@ __device__ __forceinline__ void rows_sub(const uint8_t* const (&w)[R], const blo
         for (int k0 = G * j; k0 < NS; k0 += 32) {
             const int k = k0 + t;
             if (NS % G != 0 && k >= NS) continue;
-            const int kbx = k / F::ipb, iqs = F::step * (k % F::ipb);
+            // k0 a multiple of the block's calls: the thread's lane alone picks the slice, its block a constant away (not for
+            // IQ3_S: see native_gus80_kernel)
+            constexpr bool aligned = G % F::ipb == 0 && 32 % F::ipb == 0 && TY != 21;
+            const int kbx = aligned ? k0 / F::ipb + t / F::ipb : k / F::ipb;
+            const int iqs = F::step * ((aligned ? t : k) % F::ipb);
             typename S::W wv[R];
 #pragma unroll
             for (int r = 0; r < R; ++r) wv[r] = S::load(w[r], kbx, iqs, lut);
@@ -290,6 +296,8 @@ __global__ void __launch_bounds__(GUS_WARPS * 32, 2) native_gus80_kernel(const u
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, c = blockIdx.x;
     const int col = GUS_ROWS * warp + (lane >> 4), t = lane & 15;
     const uint8_t* wg = (const uint8_t*) grp_ptr[g] + (size_t) (32 * c + col) * L.gu_row;
+    // global loads save registers and 2-9% on the tiers' GPUs, but IQ3_S's kernel then spills 368 bytes on sm_120 and runs 4-19% slower
+    if constexpr (TG != 21) __builtin_assume(__isGlobal(wg));
     const uint8_t* wu = wg + L.up_off;
     const int hb = (int) (L.n_ff / 32);
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
@@ -356,6 +364,7 @@ __global__ void __launch_bounds__(DOWN_WARPS * 32) native_down_sub_kernel(const 
     const int lane = threadIdx.x & 31, t = lane & (G - 1);
     const int r = (blockIdx.x * DOWN_WARPS + (threadIdx.x >> 5)) * (32 / G) + lane / G;
     const uint8_t* wr = (const uint8_t*) grp_ptr[g] + L.down_off + (size_t) r * L.d_row;
+    __builtin_assume(__isGlobal(wr));
     const int hb = (int) (L.n_ff / 32);
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
     for (int e = e0; e < e1; e += 4) {
@@ -389,7 +398,7 @@ __device__ __forceinline__ void gu_h_pass(const uint8_t* wg, const uint8_t* wu, 
 }
 
 template<int TG>
-__global__ void __launch_bounds__(GUS_WARPS * 32, 1) native_gu_h_kernel(const unsigned long long* __restrict__ grp_ptr,
+__global__ void __launch_bounds__(GUS_WARPS * 32, 2) native_gu_h_kernel(const unsigned long long* __restrict__ grp_ptr,
                                                                         const int32_t* __restrict__ grp_start,
                                                                         const int32_t* __restrict__ n_groups,
                                                                         const int32_t* __restrict__ ent_tok,
@@ -404,8 +413,9 @@ __global__ void __launch_bounds__(GUS_WARPS * 32, 1) native_gu_h_kernel(const un
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, c = blockIdx.x;
     const int col = 32 * c + GUS_ROWS * warp + (lane >> 4), t = lane & 15;
     const uint8_t* wg = (const uint8_t*) grp_ptr[g] + (size_t) col * L.gu_row;
+    __builtin_assume(__isGlobal(wg));
     const uint8_t* wu = wg + L.up_off;
-    const int n_ff = (int) L.n_ff;
+    constexpr int n_ff = 640;   // native_expert_grouped takes no other
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
     for (int e = e0; e < e1; e += 2) {
         float* h = hf + (size_t) e * n_ff + col;
@@ -533,6 +543,7 @@ __global__ void __launch_bounds__(GUS_WARPS * 32) native_gus_contract_kernel(
     __shared__ float sh[GUS_BATCH][32];
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, c = blockIdx.x;
     const uint8_t* wg = (const uint8_t*) grp_ptr[g] + (size_t) (32 * c + GUS_ROWS * warp) * L.gu_row;
+    __builtin_assume(__isGlobal(wg));
     const uint8_t* wu = wg + L.up_off;
     const int nb = (int) (L.n_embd / F::qk), hb = (int) (L.n_ff / 32);
     const size_t block_stride = L.gu_row / (size_t) nb;

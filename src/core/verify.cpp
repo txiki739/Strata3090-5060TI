@@ -1385,10 +1385,12 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
             const unsigned long long before = l == 0 ? w[1] : (st - kStamps)[kLayerStamps - 1];
             prof_ns_[(size_t) kind * kStamps] += (double) (st[0] - before);
             for (int i = 1; i < kLayerStamps; ++i) prof_ns_[(size_t) kind * kStamps + i] += (double) (st[i] - st[i - 1]);
-            // the shared expert's branch and the second GPU's rows', from the doorbell (they fork there) to their ends
-            prof_ns_[(size_t) kind * kStamps + kLayerStamps] += (double) (st[kLayerStamps] - st[4]);
+            // the shared expert's branch and the second GPU's rows', from the doorbell (they fork there) to their ends; a
+            // branch that ended before the doorbell (a Q8_0 shared expert beside a rotation and a router) counts as none
+            const auto after_ring = [&](unsigned long long end) { return end > st[4] ? (double) (end - st[4]) : 0.0; };
+            prof_ns_[(size_t) kind * kStamps + kLayerStamps] += after_ring(st[kLayerStamps]);
             for (int t = 0; t < n_tiers_; ++t)
-                prof_ns_[(size_t) kind * kStamps + kLayerStamps + 1 + t] += (double) (st[kLayerStamps + 1 + t] - st[4]);
+                prof_ns_[(size_t) kind * kStamps + kLayerStamps + 1 + t] += after_ring(st[kLayerStamps + 1 + t]);
             {   // the wait for the CPU's rows, by bucket
                 const double us = (double) (st[9] - st[8]) / 1e3;
                 int b = 0;
