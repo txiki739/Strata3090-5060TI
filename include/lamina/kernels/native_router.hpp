@@ -29,6 +29,7 @@ struct VerifyRouterArgs {
     float* weights = nullptr;                          // (n_tok, 10)
     float* x_out = nullptr;                            // mapped copy of x, or null
     uint8_t* xq1 = nullptr;                            // x as q8_1 rows (n_embd / 32 blocks each), or null
+    const float* x_rows = nullptr;                     // what the rows quantize when not x (a rotated copy), or null
     uint8_t* xq1_out = nullptr;                        // mapped copy of them, or null (needs xq1)
     uint8_t* xk_out = nullptr;                         // mapped: x as Q8_K rows, `xk_stride` bytes apart (a multiple
     int xk_stride = 0;                                 // of 16), or null (needs xq1)

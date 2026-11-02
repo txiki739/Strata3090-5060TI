@@ -27,6 +27,9 @@ struct NativeFmt {
     size_t up_off = 0, down_off = 0;    ///< inside the blob
     size_t bytes = 0;                   ///< the whole blob
     size_t act_bytes = 0, h_bytes = 0;  ///< quantized activation sizes (n_embd of gu_act, n_ff of d_act)
+    int had_block = 0;                  ///< Hadamard-folded weights (hadamard.hpp): the rotation's block, else 0
+    bool had_gu = false, had_d = false; ///< which of the layer's inputs are rotated
+    const float* gu_signs = nullptr, *d_signs = nullptr;   ///< their sign vectors (null: identity)
 };
 
 /// Whether this build has the ggml-cpu path.
@@ -34,9 +37,9 @@ bool native_experts_available() noexcept;
 /// Fills `f` for a layer; false (with a reason) when ggml-cpu has no dot product for a type.
 bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt& f, std::string& err);
 
-/// x (n_embd floats) -> the gate/up activation (act_bytes).
+/// x (n_embd floats) -> the gate/up activation (act_bytes), rotated first where the layer is Hadamard-folded.
 void native_quant_act(const NativeFmt& f, const float* x, void* dst);
-/// h (n_ff floats) -> the down activation (h_bytes).
+/// h (n_ff floats) -> the down activation (h_bytes), rotated first where the layer is Hadamard-folded.
 void native_quant_h(const NativeFmt& f, const float* h, void* dst);
 
 /// From how many tokens native_gu_rows gives this gate/up type to a multi-token kernel (#152; ggml-cpu's per-token dot

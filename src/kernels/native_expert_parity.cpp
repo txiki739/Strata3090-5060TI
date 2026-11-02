@@ -11,6 +11,9 @@
 // prompt path and the embedding, against `to_float`: exact.
 #include "lamina/artifact/gguf_reader.hpp"
 #include "lamina/kernels/cpu/native_expert.hpp"
+#include "lamina/kernels/cpu/hadamard.hpp"
+#include "lamina/kernels/cpu/tq_cpu.hpp"
+#include "lamina/core/pack_image.hpp"
 #include "lamina/kernels/cpu/expert.hpp"
 #include "lamina/kernels/cpu/expert_layout.hpp"
 #include "lamina/kernels/cpu/iq_avx512.hpp"
@@ -79,14 +82,18 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
                cudaStream_t s) {
     int failures = 0;
     // (a) the float reference
-    const auto* tg = ggml_get_type_traits((ggml_type) f.gu_type);
-    const auto* td = ggml_get_type_traits((ggml_type) f.d_type);
+    const bool tq = cpu::tq_supported(f.gu_type);
+    const auto to_float = [&](int type, const uint8_t* row, float* out, int64_t n) {
+        if (tq) cpu::tq_dequant_row(type, row, (int) n, out);
+        else ggml_get_type_traits((ggml_type) type)->to_float(row, out, n);
+    };
+    const auto type_name = [&](int type) { return tq ? lamina::ggml_type_name((uint32_t) type) : ggml_type_name((ggml_type) type); };
     std::vector<float> G((size_t) FF * H), U((size_t) FF * H), D((size_t) H * FF);
     for (int64_t r = 0; r < FF; ++r) {
-        tg->to_float(blob.data() + r * f.gu_row, G.data() + r * H, H);
-        tg->to_float(blob.data() + f.up_off + r * f.gu_row, U.data() + r * H, H);
+        to_float(f.gu_type, blob.data() + r * f.gu_row, G.data() + r * H, H);
+        to_float(f.gu_type, blob.data() + f.up_off + r * f.gu_row, U.data() + r * H, H);
     }
-    for (int64_t r = 0; r < H; ++r) td->to_float(blob.data() + f.down_off + r * f.d_row, D.data() + r * FF, FF);
+    for (int64_t r = 0; r < H; ++r) to_float(f.d_type, blob.data() + f.down_off + r * f.d_row, D.data() + r * FF, FF);
     std::mt19937 rng(11 + seed);
     std::normal_distribution<float> nd(0.f, 1.f);
     std::vector<float> x((size_t) NT * H);
@@ -95,13 +102,17 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
     const bool exact = lamina::kernels::native_expert_exact_supported(f.gu_type, f.d_type, f.gu_act, f.d_act);
     std::vector<float> got_cx((size_t) NT * H), got_gx((size_t) NT * H);
     std::vector<std::vector<uint8_t>> cpu_hqx(NT, std::vector<uint8_t>(cpu::kNativeHBytes));
+    std::vector<float> xr = x;   // the inputs the folded weights take (hadamard.hpp)
+    if (f.had_gu)
+        for (int k = 0; k < NT; ++k) cpu::hadamard_rotate(xr.data() + k * H, (int) H, f.had_block, f.gu_signs);
     for (int k = 0; k < NT; ++k) {
         std::vector<float> h(FF);
         for (int64_t r = 0; r < FF; ++r) {
             double g = 0, u = 0;
-            for (int64_t i = 0; i < H; ++i) { g += (double) G[r * H + i] * x[k * H + i]; u += (double) U[r * H + i] * x[k * H + i]; }
+            for (int64_t i = 0; i < H; ++i) { g += (double) G[r * H + i] * xr[k * H + i]; u += (double) U[r * H + i] * xr[k * H + i]; }
             h[r] = (float) (g / (1.0 + std::exp(-g)) * u);
         }
+        if (f.had_d) cpu::hadamard_rotate(h.data(), (int) FF, f.had_block, f.d_signs);
         for (int64_t r = 0; r < H; ++r) {
             double o = 0;
             for (int64_t i = 0; i < FF; ++i) o += (double) D[r * FF + i] * h[i];
@@ -122,8 +133,47 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
             ffp[k] = ff[k].data();
         }
         cpu::native_gu_rows(f, blob.data(), a, NT, ffp, 0, (int) FF);
-        const auto* tc = ggml_get_type_traits_cpu((ggml_type) f.gu_type);
         const int it = 50;
+        if (tq) {   // the kernels' times on one thread, and every ISA against the scalar reference, bit for bit
+            float* f1[1] = {ffp[0]};
+            auto t0 = std::chrono::steady_clock::now();
+            for (int i = 0; i < it; ++i) cpu::native_gu_rows(f, blob.data(), a, 1, f1, 0, (int) FF);
+            const double us1 = us_since(t0, it);
+            t0 = std::chrono::steady_clock::now();
+            for (int i = 0; i < it; ++i) cpu::native_gu_rows(f, blob.data(), a, NT, ffp, 0, (int) FF);
+            std::printf("          gate+up one thread, weights cache-resident: %.0f us one token (%.2f GB/s), %.0f us %d tokens\n",
+                        us1, 2.0 * f.up_off / us1 / 1e3, us_since(t0, it), NT);
+            size_t ndiff = 0;
+            std::vector<std::vector<float>> refs(NT, std::vector<float>(FF)), gots(NT, std::vector<float>(FF));
+            float* rp[NT];
+            float* gp[NT];
+            std::vector<float> dg(NT * 80);
+            std::vector<cpu::tq_detail::TqAct> ta(NT);
+            for (int k = 0; k < NT; ++k) {
+                for (int b = 0; b < 80; ++b) {
+                    uint16_t h16;
+                    std::memcpy(&h16, act[k].data() + (size_t) b * 36, 2);
+                    dg[(size_t) k * 80 + b] = ggml_fp16_to_fp32(h16);
+                }
+                ta[k].blocks = act[k].data();
+                ta[k].d = dg.data() + (size_t) k * 80;
+                rp[k] = refs[k].data();
+                gp[k] = gots[k].data();
+            }
+            const int kb = cpu::tq_kbits(f.gu_type);
+            cpu::tq_detail::tq_rows_scalar(kb, blob.data(), f.gu_row, (int) H, ta.data(), NT, rp, 0, (int) FF);
+            if (cpu::cpu_avx2_ok()) {
+                cpu::tq_detail::tq_rows_avx2(kb, blob.data(), f.gu_row, (int) H, ta.data(), NT, gp, 0, (int) FF);
+                for (int k = 0; k < NT; ++k) ndiff += std::memcmp(refs[k].data(), gots[k].data(), (size_t) FF * 4) != 0;
+            }
+            if (cpu::cpu_avx512_ok()) {
+                cpu::tq_detail::tq_rows_avx512(kb, blob.data(), f.gu_row, (int) H, ta.data(), NT, gp, 0, (int) FF);
+                for (int k = 0; k < NT; ++k) ndiff += std::memcmp(refs[k].data(), gots[k].data(), (size_t) FF * 4) != 0;
+            }
+            std::printf("          trellis rows, AVX2 and AVX-512 against scalar: %zu differ  %s\n", ndiff, ndiff == 0 ? "ok" : "FAIL");
+            failures += ndiff != 0;
+        }
+        const auto* tc = tq ? nullptr : ggml_get_type_traits_cpu((ggml_type) f.gu_type);
         if (cpu::iq512_supported(f.gu_type) && cpu::cpu_avx512_ok()) {   // its kernel only where the CPU runs it
             // the AVX-512 rows against ggml's own vec_dot, same Q8_K activations: float-order differences only
             std::vector<float> g512((size_t) NT * FF), gref((size_t) NT * FF);
@@ -144,7 +194,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
             std::printf("          gate+up one thread, weights cache-resident: avx512 %.0f us one token (%.2f GB/s), "
                         "%.0f us %d tokens\n", us1, 2.0 * f.up_off / us1 / 1e3, us_since(t0, it), NT);
         }
-        {   // ggml-cpu's own rows, one thread (what the pool runs for formats without an AVX-512 kernel)
+        if (!tq) {   // ggml-cpu's own rows, one thread (what the pool runs for formats without an AVX-512 kernel)
             auto t0 = std::chrono::steady_clock::now();
             for (int i = 0; i < it; ++i)
                 for (int64_t r = 0; r < FF; ++r) {
@@ -203,7 +253,7 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
         cudaMalloc(&dblob, blob.size());
         cudaMalloc(&dx, x.size() * 4);
         cudaMalloc(&dxq, (size_t) NT * (std::max)(H / 32 * 36, H / 256 * 292));
-        cudaMalloc(&dscr, lamina::kernels::native_expert_scratch_bytes(NT, FF));
+        cudaMalloc(&dscr, lamina::kernels::native_expert_scratch_bytes(NT, FF, f.had_d));
         cudaMalloc((void**) &dout, (size_t) NT * H * 4);
         cudaMalloc((void**) &dptr, 8);
         cudaMalloc((void**) &dstart, 8);
@@ -220,8 +270,15 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
         cudaMemcpy(ddst, idx, NT * 4, cudaMemcpyHostToDevice);
         cudaMemcpy(dtok, idx, NT * 4, cudaMemcpyHostToDevice);
         auto run = [&](bool contract, std::vector<float>& out) {
-            const auto L = contract ? lamina::kernels::native_expert_layout(f.gu_type, f.d_type, H, FF, f.gu_act, f.d_act)
-                                    : lamina::kernels::native_expert_layout(f.gu_type, f.d_type, H, FF);
+            auto L = contract ? lamina::kernels::native_expert_layout(f.gu_type, f.d_type, H, FF, f.gu_act, f.d_act)
+                              : lamina::kernels::native_expert_layout(f.gu_type, f.d_type, H, FF);
+            if (f.had_d) {
+                L.had_block = f.had_block;
+                L.d_signs = lamina::kernels::hadamard_device_signs(f.d_signs, (int) FF);
+            }
+            if (f.had_gu)
+                lamina::kernels::hadamard_rows((const float*) dx, (float*) dx, NT, H,
+                                               lamina::kernels::hadamard_device_signs(f.gu_signs, (int) H), s);
             if (L.gu_act == 15)
                 lamina::kernels::quantize_q8_K((const float*) dx, (uint8_t*) dxq, (int64_t) NT * H, s);
             else
@@ -232,6 +289,14 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
             cudaMemcpy(out.data(), dout, out.size() * 4, cudaMemcpyDeviceToHost);
         };
         run(false, got_g);
+        if (f.had_gu) {   // run rotated dx in place: the kernel's floats against hadamard_rotate's
+            std::vector<float> dr(x.size());
+            cudaMemcpy(dr.data(), dx, dr.size() * 4, cudaMemcpyDeviceToHost);
+            size_t nd = 0;
+            for (size_t i = 0; i < dr.size(); ++i) nd += std::memcmp(&dr[i], &xr[i], 4) != 0;
+            std::printf("          GPU rotation vs the CPU's: %zu of %zu floats differ  %s\n", nd, dr.size(), nd == 0 ? "ok" : "FAIL");
+            failures += nd != 0;
+        }
         if (exact) {
             run(true, got_gx);
             // the hidden rows (the down projection's input, in the CPU's d_act format) and the outputs, bit for bit
@@ -302,13 +367,14 @@ int check_blob(const cpu::NativeFmt& f, const std::vector<uint8_t>& blob, int se
     const double ec = rel(got_c, ref), eg = rel(got_g, ref), ecg = rel(got_c, got_g);
     const bool ok = ec < 3e-2 && eg < 3e-2 && std::isfinite(ec) && std::isfinite(eg);
     std::printf("%-9s %-8s/%-7s blob %8zu  cpu rel %.2e  gpu rel %.2e  cpu-gpu %.2e  %s\n", label.c_str(),
-                ggml_type_name((ggml_type) f.gu_type), ggml_type_name((ggml_type) f.d_type), f.bytes, ec, eg, ecg,
+                type_name(f.gu_type), type_name(f.d_type), f.bytes, ec, eg, ecg,
                 ok ? "ok" : "FAIL");
     return failures + (ok ? 0 : 1);
 }
 
 int type_of(std::string name) {
     for (auto& c : name) c = (char) std::tolower((unsigned char) c);
+    if (name == "tqp5" || name == "tqp6" || name == "tqp7") return 147 + (name[3] - '5');   // not ggml's
     for (int t = 0; t < GGML_TYPE_COUNT; ++t) {
         const char* n = ggml_type_name((ggml_type) t);
         if (n == nullptr) continue;
@@ -324,6 +390,16 @@ std::vector<uint8_t> synthetic_blob(const cpu::NativeFmt& f, int seed) {
     std::vector<uint8_t> blob(f.bytes);
     std::mt19937 rng(seed);
     std::normal_distribution<float> nd(0.f, 1.f);
+    if (cpu::tq_supported(f.gu_type)) {   // any trellis stream is a valid one: random steps, a scale a block
+        std::uniform_int_distribution<int> byte(0, 255);
+        const size_t bb = cpu::tq_block_bytes(f.gu_type);
+        for (size_t at = 0; at + bb <= blob.size(); at += bb) {
+            const ggml_fp16_t d = ggml_fp32_to_fp16(0.01f * (0.5f + (float) (byte(rng) % 7) / 7.0f));
+            std::memcpy(blob.data() + at, &d, 2);
+            for (size_t i = 2; i < bb; ++i) blob[at + i] = (uint8_t) byte(rng);
+        }
+        return blob;
+    }
     auto quant = [&](int type, int64_t rows, int64_t cols, uint8_t* dst) {
         std::vector<float> w((size_t) (rows * cols));
         for (int64_t r = 0; r < rows; ++r) {
@@ -370,10 +446,23 @@ int main(int argc, char** argv) {
                 ++failures;
                 continue;
             }
+            if (cpu::tq_supported(gu)) {   // folded with identity signs
+                f.had_block = 128;
+                f.had_gu = f.had_d = true;
+            }
             failures += check_blob(f, synthetic_blob(f, i), i, "synthetic", s);
         }
     } else {
         const lamina::GgufModel model(lamina::gguf_split_paths(argv[1]));
+        lamina::core::PackImage pack;
+        {
+            std::string err;
+            if (!lamina::core::PackImage::build(argv[1], pack, err)) {
+                std::printf("%s\n", err.c_str());
+                return 1;
+            }
+            cpu::hadamard_set(pack.hadamard());
+        }
         std::vector<int> layers;
         for (int i = 2; i < argc; ++i) layers.push_back(std::atoi(argv[i]));
         if (layers.empty()) layers = {0, 1, 2, 3, 20, 47};
@@ -392,6 +481,13 @@ int main(int argc, char** argv) {
             std::string err;
             if (!cpu::native_fmt((int) t[0]->type, (int) t[2]->type, H, FF, f, err)) {
                 std::printf("layer %d: %s\n", l, err.c_str()); ++failures; continue;
+            }
+            if (const cpu::HadamardSpec& hs = cpu::hadamard_spec(); hs.any()) {
+                f.had_block = hs.block;
+                f.had_gu = hs.gu(l);
+                f.had_d = hs.down(l);
+                f.gu_signs = f.had_gu ? cpu::hadamard_signs((int) H) : nullptr;
+                f.d_signs = f.had_d ? cpu::hadamard_signs((int) FF) : nullptr;
             }
             std::vector<uint8_t> blob(f.bytes);
             std::memcpy(blob.data(), data[0] + (size_t) E * f.up_off, f.up_off);

@@ -45,6 +45,7 @@
 #include "lamina/spec/suffix_drafter.hpp"
 #include "lamina/core/native_dense.hpp"
 #include "lamina/core/pack_image.hpp"
+#include "lamina/kernels/cpu/hadamard.hpp"
 #include "lamina/platform/console_quit.hpp"
 
 #include <cuda_runtime.h>
@@ -1404,6 +1405,9 @@ int lamina::program::run(int argc, char** argv) {
     // projections, head and embedding come from the model file), and its experts run in verify windows only (--spec).
     {
         const lamina::core::ModelGeometry g0;
+        lamina::kernels::cpu::hadamard_set(pack_image.hadamard());
+        if (pack_image.hadamard().any())
+            std::fprintf(stderr, "lamina: Hadamard-folded experts, their inputs rotated per %d values\n", pack_image.hadamard().block);
         if (!lamina::kernels::cpu::expert_layout_load_text(pack_image.native_experts_text(), g0.n_layers, g0.n_expert,
                                                            err)) {
             std::fprintf(stderr, "lamina: %s\n", err.c_str());

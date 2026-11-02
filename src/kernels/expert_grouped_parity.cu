@@ -295,6 +295,7 @@ void grouped(const NativeExpertLayout& L, const unsigned long long* grp_ptr, con
     }
     const long long nh = (long long) cap_entries * L.n_ff;
     swiglu_entries_kernel<<<(unsigned) ((nh + 255) / 256), 256, 0, s>>>(gate, up, h, nh);
+    if (L.had_block > 0) hadamard_rows(h, h, cap_entries, L.n_ff, L.d_signs, s);
     quantize_q8_1_kernel<<<(unsigned) ((nh + 255) / 256), 256, 0, s>>>(h, hq, nh);
     const dim3 gd((unsigned) ((L.n_embd + 7) / 8), (unsigned) cap_groups);
     switch (L.d_type) {
@@ -327,6 +328,15 @@ uint8_t* make_arena(const lamina::kernels::NativeExpertLayout& L, size_t stride,
     };
     for (int b = 0; b < DISTINCT; ++b) {
         uint8_t* blob = blobs.data() + (size_t) b * L.bytes;
+        if (L.gu_type >= 147) {   // the trellis formats: any stream is a valid one, a scale a block
+            const size_t bb = 2 + 8 * (size_t) (L.gu_type - 142);
+            for (size_t at = 0; at + bb <= L.bytes; at += bb) {
+                const ggml_fp16_t f16 = ggml_fp32_to_fp16(0.01f * (0.5f + (float) (rng() % 7) / 7.0f));
+                std::memcpy(blob + at, &f16, 2);
+                for (size_t i = 2; i < bb; ++i) blob[at + i] = (uint8_t) rng();
+            }
+            continue;
+        }
         quant(L.gu_type, FF, H, blob);
         quant(L.gu_type, FF, H, blob + L.up_off);
         quant(L.d_type, H, FF, blob + L.down_off);
@@ -468,7 +478,7 @@ int main(int argc, char** argv) {
     check(cudaMalloc(&d.tok, (size_t) cap * 4), "dev");
     check(cudaMalloc(&d.xq, (size_t) MAXT * (H / 32) * sizeof(block_q8_1)), "dev");
     check(cudaMalloc(&d.scratch_ref, lamina::kernels::ref::scratch_bytes(cap, FF)), "dev");
-    check(cudaMalloc(&d.scratch_new, lamina::kernels::native_expert_scratch_bytes(cap, FF)), "dev");
+    check(cudaMalloc(&d.scratch_new, lamina::kernels::native_expert_scratch_bytes(cap, FF, true)), "dev");
     check(cudaMalloc(&d.out_ref, (size_t) cap * H * 4), "dev");
     check(cudaMalloc(&d.out_new, (size_t) cap * H * 4), "dev");
     if (bench) {
@@ -489,19 +499,22 @@ int main(int argc, char** argv) {
     }
     // parity: every gate/up format with a down format in turn (down rows are n_ff = 640 long: 32- and 64-blocks);
     // bench: the model files' pairs (IQ2_XXS .. IQ4_XS with IQ4_NL / Q2_0: the IQ3_S file; Q2_0: the draft layer;
-    // Q4_K, Q5_K with Q5_1, Q8_0: UD-Q4_K_XL)
+    // Q4_K, Q5_K with Q5_1, Q8_0: UD-Q4_K_XL; the TQP pairs: Gyro-L, Hadamard-folded with identity signs)
     const int gus[] = {7, 8, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 29, 42}, downs[] = {7, 8, 20, 42};
     std::vector<std::pair<int, int>> pairs;
     if (bench) pairs = {{16, 42}, {17, 20}, {18, 20}, {21, 42}, {22, 20}, {23, 20}, {42, 42}, {12, 7}, {13, 8}};
     else
         for (size_t i = 0; i < sizeof gus / sizeof gus[0]; ++i) pairs.emplace_back(gus[i], downs[i % 4]);
+    for (int t : {147, 148, 149}) pairs.emplace_back(t, t);
     int bad = 0;
     std::mt19937 rng(11);
     for (const auto& [gu, dn] : pairs) {
-        const lamina::kernels::NativeExpertLayout L = lamina::kernels::native_expert_layout(gu, dn, H, FF);
+        lamina::kernels::NativeExpertLayout L = lamina::kernels::native_expert_layout(gu, dn, H, FF);
+        if (gu >= 147) L.had_block = 128;
         const size_t stride = (L.bytes + 255) & ~(size_t) 255;
         uint8_t* arena = make_arena(L, stride, gu * 100 + dn);
-        const char* names = ggml_type_name((ggml_type) gu);
+        const auto type_name = [](int t) { return t == 147 ? "TQP5" : t == 148 ? "TQP6" : t == 149 ? "TQP7" : ggml_type_name((ggml_type) t); };
+        const char* names = type_name(gu);
         if (!bench) {
             int cases = 0, diff = 0;
             for (int n_tok : {1, 2, 3, 4, 8})
@@ -519,11 +532,11 @@ int main(int argc, char** argv) {
                     diff += a != b;
                     ++cases;
                 }
-            std::printf("%-8s/%-7s %d plans: %s\n", names, ggml_type_name((ggml_type) dn), cases,
+            std::printf("%-8s/%-7s %d plans: %s\n", names, type_name(dn), cases,
                         diff ? "MISMATCH" : "bitwise equal");
             bad += diff;
         } else {
-            std::printf("%-8s/%-7s", names, ggml_type_name((ggml_type) dn));
+            std::printf("%-8s/%-7s", names, type_name(dn));
             for (int n_tok : {1, 2, 4, 8}) {
                 const Plan p = make_plan(rng, n_tok, 0.92, arena, stride);
                 upload(p, d);

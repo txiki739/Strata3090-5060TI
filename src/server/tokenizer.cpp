@@ -2,7 +2,7 @@
 
 #include "json.hpp"
 
-#include "gguf.h"
+#include "gguf_header.h"
 #include "src/unicode.h"   // llama.cpp's: the pre-tokenizer split (unicode_regex_split)
 
 #include <algorithm>
@@ -84,12 +84,10 @@ constexpr size_t kPieceCacheMax = 200000;
 std::unique_ptr<Tokenizer> Tokenizer::from_gguf(const std::string& path) {
     FILE* f = open_utf8(path);
     if (f == nullptr) throw std::runtime_error("cannot open " + path);
-    gguf_init_params params{};
-    params.no_alloc = true;
-    params.ctx = nullptr;
-    gguf_context* g = gguf_init_from_file_ptr(f, params);
+    std::string herr;
+    gguf_context* g = lamina_gguf::read_header(f, herr);
     std::fclose(f);
-    if (g == nullptr) throw std::runtime_error(path + " is not a readable GGUF file");
+    if (g == nullptr) throw std::runtime_error(path + " is not a readable GGUF file: " + herr);
     struct Free {
         gguf_context* g;
         ~Free() { gguf_free(g); }

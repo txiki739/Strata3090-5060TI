@@ -115,7 +115,7 @@ inline const char* ggml_type_name(uint32_t t) {
         return "Q1_0";
     case 42:
         return "Q2_0";
-    // Agention's llama.cpp fork: the APR trellis expert types (named only: the engine has no kernels for them)
+    // Agention's llama.cpp fork: the APR trellis expert types (the engine's kernels: 147-149, Gyro-L's)
     case 143:
         return "PTQ1_0";
     case 144:
@@ -124,6 +124,12 @@ inline const char* ggml_type_name(uint32_t t) {
         return "TQK6";
     case 146:
         return "TQK7";
+    case 147:
+        return "TQP5";
+    case 148:
+        return "TQP6";
+    case 149:
+        return "TQP7";
     default:
         return "?";
     }
@@ -264,6 +270,19 @@ inline bool block_geometry(uint32_t t, int& elems, int& bytes) {
         elems = 128;
         bytes = 30;
         return true;
+    // the pair trellis: fp16 scale + 64 steps of K bits (K = 5, 6, 7)
+    case 147:
+        elems = 128;
+        bytes = 42;
+        return true;
+    case 148:
+        elems = 128;
+        bytes = 50;
+        return true;
+    case 149:
+        elems = 128;
+        bytes = 58;
+        return true;
     default:
         return false;
     }
@@ -314,6 +333,7 @@ private:
 
 enum class MetaType : uint32_t { U8 = 0, I8, U16, I16, U32, I32, F32, BOOL, STRING, ARRAY, U64, I64, F64 };
 
+inline constexpr uint64_t kMetaArrayKept = 8192;   // of an array's values; prism.hadamard's are read whole (3,200 signs)
 struct MetaValue {
     MetaType type = MetaType::U32;
     uint64_t u = 0;                // integer payloads
@@ -374,10 +394,10 @@ inline MetaValue read_value(Cursor& c, MetaType t, int depth = 0) {
         v.elem = (MetaType)c.read<uint32_t>();
         v.count = c.read<uint64_t>();
         if (v.count > (1u << 24)) throw std::runtime_error("GGUF: implausible array length");
-        v.items.reserve((size_t)std::min<uint64_t>(v.count, 64));
+        v.items.reserve((size_t)std::min<uint64_t>(v.count, kMetaArrayKept));
         for (uint64_t i = 0; i < v.count; ++i) {
             MetaValue e = read_value(c, v.elem, depth + 1);
-            if (i < 64) v.items.push_back(std::move(e)); // keep a sample; the count is what matters
+            if (i < kMetaArrayKept) v.items.push_back(std::move(e)); // a sample: of the vocabulary the count is what matters
         }
         break;
     }

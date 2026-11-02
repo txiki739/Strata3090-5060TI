@@ -3,6 +3,8 @@
 
 #include "lamina/core/cuda_host.hpp"
 #include "lamina/kernels/cpu/expert_layout.hpp"
+#include "lamina/kernels/cpu/hadamard.hpp"
+#include "lamina/kernels/cpu/tq_cpu.hpp"
 #include "lamina/kernels/elementwise.hpp"
 #include "lamina/kernels/iq_kernels.hpp"
 
@@ -75,7 +77,8 @@ bool SecondGpu::init(int device, int main_device, int64_t n_embd, int64_t n_ff, 
     run("mapped staging", cudaHostGetDevicePointer((void**) &m_plan_, h_plan_, 0));
     run("device buffers", cudaMalloc((void**) &d_xq_, xb));
     run("device buffers", cudaMalloc((void**) &d_plan_, pb));
-    run("device buffers", cudaMalloc((void**) &d_scratch_, lamina::kernels::native_expert_scratch_bytes(cap_, n_ff)));
+    run("device buffers", cudaMalloc((void**) &d_scratch_, lamina::kernels::native_expert_scratch_bytes(
+                                                               cap_, n_ff, lamina::kernels::cpu::hadamard_spec().any())));
     run("device buffers", cudaMalloc((void**) &d_rows_, ob));
     run("device buffers", cudaMalloc((void**) &d_count_, sizeof(unsigned)));
     run("device buffers", cudaMemset(d_count_, 0, sizeof(unsigned)));
@@ -141,8 +144,11 @@ bool SecondGpu::graph_for(int gu_type, int d_type, int gu_act, int d_act, int gr
             exec = gr.exec;
             return true;
         }
-    const lamina::kernels::NativeExpertLayout L = lamina::kernels::native_expert_layout(
-        gu_type, d_type, n_embd_, n_ff_, gu_act, d_act);
+    lamina::kernels::NativeExpertLayout L = lamina::kernels::native_expert_layout(gu_type, d_type, n_embd_, n_ff_, gu_act, d_act);
+    if (lamina::kernels::cpu::tq_supported(d_type)) {   // the trellis formats are Hadamard-folded (core::PackImage)
+        L.had_block = lamina::kernels::cpu::hadamard_spec().block;
+        L.d_signs = lamina::kernels::hadamard_device_signs(lamina::kernels::cpu::hadamard_signs((int) n_ff_), (int) n_ff_);
+    }
     const PlanLayout P(cap_);
     const auto* pi = (const int32_t*) d_plan_;
     const auto* p64 = (const unsigned long long*) (pi + P.ptr);

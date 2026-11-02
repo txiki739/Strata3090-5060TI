@@ -49,6 +49,8 @@ struct NativeExpertLayout {
     size_t gu_row = 0, d_row = 0;       // bytes per row
     size_t up_off = 0, down_off = 0;    // byte offsets inside the blob
     size_t bytes = 0;                   // the whole blob
+    int had_block = 0;                  // Hadamard-folded down weights: h is rotated before it is quantized (hadamard.hpp)
+    const float* d_signs = nullptr;     // their sign vector, n_ff floats on this device, or null
 };
 NativeExpertLayout native_expert_layout(int gu_type, int d_type, int64_t n_embd, int64_t n_ff,
                                         int gu_act = -1, int d_act = -1);
@@ -88,7 +90,14 @@ void native_q8_0_contract_probe(const float* x, int64_t n, void* y, void* stream
 
 /// Bytes of scratch `native_expert_grouped` needs for `cap_entries` entries.  The largest supported hidden
 /// activation format is selected automatically (Q8_K, Q8_0 or Q8_1).
-size_t native_expert_scratch_bytes(int64_t cap_entries, int64_t n_ff);
+size_t native_expert_scratch_bytes(int64_t cap_entries, int64_t n_ff, bool rotated = false);
+/// y = H_128 (signs * x), the Hadamard-folded experts' rotation (hadamard.hpp), per 128 values of each of `rows` rows of `width`
+/// floats, bitwise hadamard_rotate; x and y may be the same.  `signs`: `width` floats on this device, or null.
+void hadamard_rows(const float* x, float* y, int64_t rows, int64_t width, const float* signs, void* stream);
+/// The same in place on FP16 rows: FP32 arithmetic, rounded once on the store.
+void hadamard_rows_f16(uint16_t* x, int64_t rows, int64_t width, const float* signs, void* stream);
+/// The current device's copy of a host sign vector (made once; kept for the process).
+const float* hadamard_device_signs(const float* host, int width);
 
 /// Grouped experts in the native format: group g's blob at device address grp_ptr[g]; its entries
 /// [grp_start[g], grp_start[g+1]) read token ent_tok[e]'s activation in `L.gu_act` format and write row ent_dst[e]

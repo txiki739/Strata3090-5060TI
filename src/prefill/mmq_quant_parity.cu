@@ -1,11 +1,13 @@
 // mmq_quant_parity - the prompt experts' q8_1 inputs, each in one kernel, byte for byte the pair it replaces:
 //   mmq::quantize_f16 with row ids (the routed rows from the FP16 input) against gather_rows16_f32 + mmq::quantize,
 //   mmq::swiglu_quantize (H) against mmq::swiglu + mmq::quantize (gate/up rows split and interleaved),
+//   and both with a Hadamard rotation in them (`signs`) against hadamard_rows between the pair,
 // for every q8_1 layout MMQ reads (D4: Q8_0 IQ4_NL Q2_0 IQ3_S, DS4: Q5_1 Q4_K, D2S6: Q2_K), on rows routed as the prompt
 // path routes them (10 of 512 experts a token, grouped by expert), with an all-zero token and row counts that are
 // multiples of nothing.  --bench: both forms at a batch of 8192 rows (the engine's), ms and the rows' bytes moved.
 #include "lamina/prefill/kernels.hpp"
 #include "lamina/prefill/moe_mmq.hpp"
+#include "lamina/kernels/iq_kernels.hpp"
 
 #include "ggml.h"
 
@@ -140,6 +142,60 @@ void h_case(int64_t rows, bool interleaved, std::mt19937& rng, cudaStream_t s) {
     }
 }
 
+// The folded experts' inputs: a sign vector of the width, rows rotated inside the quantizer against rotated between the two
+std::vector<float> random_signs(int64_t n, std::mt19937& rng) {
+    std::vector<float> v((size_t) n);
+    for (auto& x : v) x = (rng() & 1) ? 1.0f : -1.0f;
+    return v;
+}
+
+void rotated_case(int64_t T, std::mt19937& rng, cudaStream_t s) {
+    const auto xsign = random_signs(N, rng), hsign = random_signs(FF, rng);
+    Dev sx(N * 4), sh(FF * 4);
+    ck(cudaMemcpy(sx.p, xsign.data(), N * 4, cudaMemcpyHostToDevice), "signs");
+    ck(cudaMemcpy(sh.p, hsign.data(), FF * 4, cudaMemcpyHostToDevice), "signs");
+    std::normal_distribution<float> nd(0.0f, 1.0f);
+    std::vector<__half> x((size_t) (T * N));
+    for (auto& v : x) v = __float2half_rn(nd(rng));
+    const std::vector<int32_t> src = routed_rows(T, rng);
+    const int64_t rows = (int64_t) src.size();
+    Dev xd(x.size() * 2), sd(src.size() * 4), f32((size_t) rows * N * 4);
+    ck(cudaMemcpy(xd.p, x.data(), x.size() * 2, cudaMemcpyHostToDevice), "x");
+    ck(cudaMemcpy(sd.p, src.data(), src.size() * 4, cudaMemcpyHostToDevice), "src");
+    const size_t qb = mmq::q8_bytes(rows, N);
+    Dev qa(qb), qf(qb);
+    ck(cudaMemset(qa.p, 0xA5, qb), "fill");
+    ck(cudaMemset(qf.p, 0xA5, qb), "fill");
+    lamina::prefill::gather_rows16_f32(xd.as<uint16_t>(), sd.as<int32_t>(), f32.as<float>(), rows, N, s);
+    lamina::kernels::hadamard_rows(f32.as<float>(), f32.as<float>(), rows, N, sx.as<float>(), s);
+    mmq::quantize(f32.as<float>(), nullptr, qa.p, (int) GGML_TYPE_IQ3_S, N, N, rows, s);
+    mmq::quantize_f16(xd.as<uint16_t>(), sd.as<int32_t>(), qf.p, (int) GGML_TYPE_IQ3_S, N, N, rows, s, sx.as<float>());
+    ck(cudaStreamSynchronize(s), "sync");
+    size_t d = diff_bytes(qa, qf, qb);
+    report(d == 0, "input rotated, " + std::to_string(rows) + " rows: " + std::to_string(d) + " of " + std::to_string(qb) + " bytes differ");
+
+    std::normal_distribution<float> gate(0.0f, 4.0f), up(0.0f, 2.0f);
+    std::vector<float> gu((size_t) (rows * 2 * FF));
+    for (int64_t r = 0; r < rows; ++r)
+        for (int64_t k = 0; k < FF; ++k) {
+            gu[(size_t) (r * 2 * FF + k)] = gate(rng);
+            gu[(size_t) (r * 2 * FF + FF + k)] = up(rng);
+        }
+    Dev gd(gu.size() * 4), h((size_t) rows * FF * 4);
+    ck(cudaMemcpy(gd.p, gu.data(), gu.size() * 4, cudaMemcpyHostToDevice), "gu");
+    const size_t qh = mmq::q8_bytes(rows, FF);
+    Dev ha(qh), hf(qh);
+    ck(cudaMemset(ha.p, 0xA5, qh), "fill");
+    ck(cudaMemset(hf.p, 0xA5, qh), "fill");
+    mmq::swiglu(gd.as<float>(), h.as<float>(), rows, FF, false, s);
+    lamina::kernels::hadamard_rows(h.as<float>(), h.as<float>(), rows, FF, sh.as<float>(), s);
+    mmq::quantize(h.as<float>(), nullptr, ha.p, (int) GGML_TYPE_IQ3_S, FF, FF, rows, s);
+    mmq::swiglu_quantize(gd.as<float>(), hf.p, (int) GGML_TYPE_IQ3_S, rows, FF, false, s, sh.as<float>());
+    ck(cudaStreamSynchronize(s), "sync");
+    d = diff_bytes(ha, hf, qh);
+    report(d == 0, "H rotated, " + std::to_string(rows) + " rows: " + std::to_string(d) + " of " + std::to_string(qh) + " bytes differ");
+}
+
 // both forms at the engine's batch of 8192 rows: each call's median over 50 after a warm-up, in ms
 void bench(cudaStream_t s) {
     std::mt19937 rng(7);
@@ -202,6 +258,7 @@ int main(int argc, char** argv) {
         }
         std::mt19937 rng(1525);
         for (int64_t T : {1, 2, 7, 333, 2099}) input_case(T, rng, s);
+        for (int64_t T : {1, 7, 333}) rotated_case(T, rng, s);
         for (int64_t rows : {1, 3, 31, 1000, 8190})
             for (bool il : {false, true}) h_case(rows, il, rng, s);
         std::printf(g_fail ? "FAIL\n" : "PASS\n");

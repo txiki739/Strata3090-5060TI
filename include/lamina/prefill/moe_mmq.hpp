@@ -30,8 +30,9 @@ void quantize(const float* x, const int32_t* ids, void* xq, int ggml_type, int64
               void* stream);
 /// The same from FP16 rows (`ld` halves apart, cols a multiple of 4): llama.cpp's quantizer reading FP16, the bytes
 /// of quantize() over those rows in FP32.
+/// `signs` (`cols` floats on this device, Hadamard-folded experts: hadamard.hpp): each 128 values rotated first, signs and all.
 void quantize_f16(const uint16_t* x, const int32_t* ids, void* xq, int ggml_type, int64_t cols, int64_t ld, int64_t rows,
-                  void* stream);
+                  void* stream, const float* signs = nullptr);
 
 /// One launch over n experts whose weights lie `expert_bytes` apart from `w`: for expert e, the activation rows
 /// [bounds[e], bounds[e+1]) of `xq` (bounds on the device, n+1 entries) times its [w_rows, w_cols] matrix into
@@ -100,7 +101,7 @@ void swiglu(const float* gu, float* h, int64_t rows, int64_t n_ff, bool interlea
 
 /// swiglu() and quantize() of its h (n_ff a multiple of 4) in one kernel, their bytes: H's q8_1 rows for the down
 /// product without the FP32 rows between.
-void swiglu_quantize(const float* gu, void* xq, int ggml_type, int64_t rows, int64_t n_ff, bool interleaved, void* stream);
+void swiglu_quantize(const float* gu, void* xq, int ggml_type, int64_t rows, int64_t n_ff, bool interleaved, void* stream, const float* signs = nullptr);
 
 /// dst[i] = i for i < n (the identity row map MMQ's MoE mode writes through).
 void iota(int32_t* dst, int64_t n, void* stream);

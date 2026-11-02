@@ -265,7 +265,9 @@ private:
     float* h_ymiss_ = nullptr;   float* m_ymiss_ = nullptr;     // T * k * n_embd
     // the FFN input as the router kernel writes it: Q8_K rows `xk_stride_` bytes apart for the layers the pool takes
     // them (xk_layer_), q8_1 rows for the GPU tiers
-    std::vector<uint8_t> xk_layer_;
+    std::vector<uint8_t> xk_layer_, x1_layer_;   // x1_layer_: the pool takes the q8_1 rows (pool_takes_q8_1)
+    float* xr_ = nullptr;                        // Hadamard-folded layers: the FFN input rotated (T rows)
+    const float* had_sx_ = nullptr, *had_sh_ = nullptr;   // their sign vectors on this GPU, n_embd and n_ff floats
     int64_t xk_stride_ = 0;
     uint8_t* h_xk_ = nullptr;    uint8_t* m_xk_ = nullptr;      // T rows
     uint8_t* h_xq1_ = nullptr;   uint8_t* m_xq1_ = nullptr;     // T rows of n_embd / 32 blocks

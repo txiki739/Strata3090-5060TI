@@ -614,6 +614,9 @@ bool ExpertRunner::run_layer(int64_t layer, int64_t T, int64_t t_begin, int64_t 
         if (last_grp >= 0) cudaStreamWaitEvent(m.s, m.pre_ev[(size_t) last_grp], 0);
         const int64_t r0 = off[j0], rows = off[j1] - r0;
         const bool q = use_mmq && rows <= ROWS;   // an expert with more rows is multiplied in pieces, in FP16
+        // Hadamard-folded experts (hadamard.hpp): their inputs rotated, in the quantizers of the MMQ path, here in FP16
+        const float* sx = f.had_gu ? lamina::kernels::hadamard_device_signs(f.gu_signs, (int) N) : nullptr;
+        const float* sh = f.had_d ? lamina::kernels::hadamard_device_signs(f.d_signs, (int) FF) : nullptr;
         const bool in_place = q && gu_tab;
         bool d_place = in_place && d_tab;   // down too, where each cache slot has the room (a uniform one may not)
         for (size_t j = j0; d_place && j < j1; ++j)
@@ -653,8 +656,10 @@ bool ExpertRunner::run_layer(int64_t layer, int64_t T, int64_t t_begin, int64_t 
             for (int64_t p = 0; p < rows; p += ROWS) {
                 const int64_t nr = std::min<int64_t>(ROWS, rows - p);
                 gather_rows16(in, m.rows_src + r0 + p, m.xs, nr, N, m.s);
+                if (f.had_gu) lamina::kernels::hadamard_rows_f16(m.xs, nr, N, sx, m.s);
                 m.gemm.f16(m.xs, m.dq_gu, m.gu, nr, FF2, N);
                 swiglu_interleaved(m.gu, m.hh, nr, m.s);
+                if (f.had_d) lamina::kernels::hadamard_rows_f16(m.hh, nr, FF, sh, m.s);
                 m.gemm.f16(m.hh, m.dq_d, m.d, nr, N, FF);
                 moe_scatter_add(out, m.d, m.w + r0 + p, m.rows_src + r0 + p, nr, m.s);
             }
@@ -662,7 +667,7 @@ bool ExpertRunner::run_layer(int64_t layer, int64_t T, int64_t t_begin, int64_t 
         }
         if (q) {
             // the rows as q8_1 for the gate/up product, from the FP16 input by row id
-            mmq::quantize_f16(in, m.rows_src + r0, m.xq, f.gu_type, N, N, rows, m.s);
+            mmq::quantize_f16(in, m.rows_src + r0, m.xq, f.gu_type, N, N, rows, m.s, sx);
             int64_t maxr = 0;
             for (size_t j = j0; j < j1; ++j) maxr = std::max<int64_t>(maxr, off[j + 1] - off[j]);
             mmq::Product p;
@@ -682,7 +687,7 @@ bool ExpertRunner::run_layer(int64_t layer, int64_t T, int64_t t_begin, int64_t 
             } else if (in_place) {
                 release();
             }
-            mmq::swiglu_quantize(m.gu, m.xq, f.d_type, rows, FF, false, m.s);   // H's q8_1 rows
+            mmq::swiglu_quantize(m.gu, m.xq, f.d_type, rows, FF, false, m.s, sh);   // H's q8_1 rows
             p.tab = d_place ? d_at : nullptr;
             p.w = m.dq_d; p.type = f.d_type; p.w_rows = N; p.w_cols = FF; p.expert_bytes = db;
             p.dst = m.d; p.ld_dst = N;
@@ -693,10 +698,12 @@ bool ExpertRunner::run_layer(int64_t layer, int64_t T, int64_t t_begin, int64_t 
             continue;
         }
         gather_rows16(in, m.rows_src + r0, m.xs, rows, N, m.s);
+        if (f.had_gu) lamina::kernels::hadamard_rows_f16(m.xs, rows, N, sx, m.s);
         m.gemm.f16_grouped(dp + 1 * E + j0, dp + 2 * E + j0, (float* const*) (m.ptrs + 3 * E + j0),
                            (const uint16_t* const*) (P + 1 * E + j0), (const uint16_t* const*) (P + 2 * E + j0),
                            (float* const*) (P + 3 * E + j0), rows_of.data() + j0, n, FF2, N);
         swiglu_interleaved(m.gu, m.hh, rows, m.s);
+        if (f.had_d) lamina::kernels::hadamard_rows_f16(m.hh, rows, FF, sh, m.s);
         m.gemm.f16_grouped(dp + 4 * E + j0, dp + 5 * E + j0, (float* const*) (m.ptrs + 6 * E + j0),
                            (const uint16_t* const*) (P + 4 * E + j0), (const uint16_t* const*) (P + 5 * E + j0),
                            (float* const*) (P + 6 * E + j0), rows_of.data() + j0, n, N, FF);

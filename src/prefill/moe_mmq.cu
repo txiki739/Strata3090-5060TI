@@ -26,6 +26,31 @@ void ck(cudaError_t e, const char* what) {
 
 int64_t pad512(int64_t n) { return (n + 511) / 512 * 512; }
 
+// ggml's tables stop at GGML_TYPE_COUNT: the trellis types' block sizes are here
+bool is_tq(int t) { return t >= 147 && t <= 149; }
+int64_t type_blck(int t) { return is_tq(t) ? 128 : (int64_t) ggml_blck_size((ggml_type) t); }
+size_t type_bytes(int t) { return is_tq(t) ? (size_t) (2 + 8 * (t - 142)) : ggml_type_size((ggml_type) t); }
+const char* type_str(int t) { return t == 147 ? "tqp5" : t == 148 ? "tqp6" : t == 149 ? "tqp7" : ggml_type_name((ggml_type) t); }
+
+// A warp's 128 values, four a lane, as H_128 (signs * x) (hadamard.hpp): hadamard_rotate's butterflies in its order
+__device__ __forceinline__ float4 rotate128(float4 v, const float* __restrict__ signs, int64_t i0, int64_t ne00, float scale) {
+    if (signs != nullptr && i0 < ne00) {
+        const float4 s = *(const float4*) (signs + i0);
+        v.x *= s.x; v.y *= s.y; v.z *= s.z; v.w *= s.w;
+    }
+    const float a = v.x + v.y, b = v.x - v.y, c = v.z + v.w, d = v.z - v.w;
+    float r[4] = {a + c, b + d, a - c, b - d};
+    const int lane = threadIdx.x & 31;
+#pragma unroll
+    for (int h = 1; h < 32; h <<= 1)
+#pragma unroll
+        for (int k = 0; k < 4; ++k) {
+            const float o = __shfl_xor_sync(0xFFFFFFFF, r[k], h, WARP_SIZE);
+            r[k] = (lane & h) ? o - r[k] : r[k] + o;
+        }
+    return make_float4(r[0] * scale, r[1] * scale, r[2] * scale, r[3] * scale);
+}
+
 __global__ void copy16_kernel(const uint4* __restrict__ a, int64_t na, const uint4* __restrict__ b, int64_t nb,
                               uint4* __restrict__ ab_dst, const uint4* __restrict__ c, int64_t nc, uint4* __restrict__ c_dst) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
@@ -76,9 +101,10 @@ unsigned blocks(int64_t n) { return (unsigned) ((n + 255) / 256); }
 
 // llama.cpp's quantize_mmq_q8_1 (quantize.cu, MIT) for FP16 rows: one channel, row i of the output from row ids[i]
 // (or i), the same arithmetic on the values the FP16 rows hold
-template <mmq_q8_1_ds_layout ds_layout>
+template <mmq_q8_1_ds_layout ds_layout, bool rotated>
 __global__ void quantize_mmq_q8_1_f16(const half* __restrict__ x, const int32_t* __restrict__ ids, void* __restrict__ vy,
-                                      const int64_t ne00, const int64_t s01, const int64_t ne0, const int ne1) {
+                                      const int64_t ne00, const int64_t s01, const int64_t ne0, const int ne1,
+                                      const float* __restrict__ signs, const float scale) {
     constexpr int vals_per_scale = ds_layout == MMQ_Q8_1_DS_LAYOUT_D2S6 ? 64 : 32;
     constexpr int vals_per_sum = ds_layout == MMQ_Q8_1_DS_LAYOUT_D2S6 ? 16 : 32;
     const int64_t i0 = ((int64_t) blockDim.x * blockIdx.y + threadIdx.x) * 4;
@@ -91,6 +117,7 @@ __global__ void quantize_mmq_q8_1_f16(const half* __restrict__ x, const int32_t*
         const float2 a = __half22float2(h[0]), b = __half22float2(h[1]);
         xi = make_float4(a.x, a.y, b.x, b.y);
     }
+    if constexpr (rotated) xi = rotate128(xi, signs, i0, ne00, scale);
     float amax = fabsf(xi.x);
     amax = fmaxf(amax, fabsf(xi.y));
     amax = fmaxf(amax, fabsf(xi.z));
@@ -126,9 +153,10 @@ __global__ void quantize_mmq_q8_1_f16(const half* __restrict__ x, const int32_t*
 }
 
 // SwiGLU's h (swiglu_kernel's arithmetic) as the values of quantize_mmq_q8_1: H's q8_1 rows without its FP32 rows
-template <mmq_q8_1_ds_layout ds_layout, bool interleaved>
+template <mmq_q8_1_ds_layout ds_layout, bool interleaved, bool rotated>
 __global__ void swiglu_quantize_mmq_q8_1(const float* __restrict__ gu, void* __restrict__ vy, const int64_t n_ff,
-                                         const int64_t ne0, const int ne1) {
+                                         const int64_t ne0, const int ne1, const float* __restrict__ signs,
+                                         const float scale) {
     constexpr int vals_per_scale = ds_layout == MMQ_Q8_1_DS_LAYOUT_D2S6 ? 64 : 32;
     constexpr int vals_per_sum = ds_layout == MMQ_Q8_1_DS_LAYOUT_D2S6 ? 16 : 32;
     const int64_t i0 = ((int64_t) blockDim.x * blockIdx.y + threadIdx.x) * 4;
@@ -150,6 +178,7 @@ __global__ void swiglu_quantize_mmq_q8_1(const float* __restrict__ gu, void* __r
         for (int k = 0; k < 4; ++k) h[k] = g[k] / (1.0f + __expf(-g[k])) * u[k];
         xi = make_float4(h[0], h[1], h[2], h[3]);
     }
+    if constexpr (rotated) xi = rotate128(xi, signs, i0, n_ff, scale);
     float amax = fabsf(xi.x);
     amax = fmaxf(amax, fabsf(xi.y));
     amax = fmaxf(amax, fabsf(xi.z));
@@ -195,6 +224,9 @@ bool supported(int t) {
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q6_K: case GGML_TYPE_Q5_1:   // unsloth's files
         case GGML_TYPE_Q8_0:
+#if defined(LAMINA_MMQ_TQP)
+        case GGML_TYPE_TQP5: case GGML_TYPE_TQP6: case GGML_TYPE_TQP7:   // Gyro-L (cmake/lamina_ggml_tq_overlay.cmake)
+#endif
             return true;
         default:
             return false;
@@ -217,11 +249,11 @@ bool fits(int t, int64_t w_rows) {
         }
         if (!any) {
             static bool said[GGML_TYPE_COUNT] = {};
-            if (t >= 0 && t < GGML_TYPE_COUNT && !said[t]) {
-                said[t] = true;
+            if (is_tq(t) || (t >= 0 && t < GGML_TYPE_COUNT && !said[t])) {
+                if (!is_tq(t)) said[t] = true;
                 std::fprintf(stderr, "lamina: prompt kernels: llama.cpp's MMQ has no tile for %s (%lld rows) on GPU %d "
                                      "(cc %d, %zu bytes of shared memory per block): that product takes the non-MMQ path\n",
-                             ggml_type_name((ggml_type) t), (long long) w_rows, id, cc, smpbo);
+                             type_str(t), (long long) w_rows, id, cc, smpbo);
             }
             return false;
         }
@@ -230,7 +262,7 @@ bool fits(int t, int64_t w_rows) {
 }
 
 size_t matrix_bytes(int t, int64_t rows, int64_t cols) {
-    return (size_t) rows * (size_t) (cols / ggml_blck_size((ggml_type) t)) * ggml_type_size((ggml_type) t);
+    return (size_t) rows * (size_t) (cols / type_blck(t)) * type_bytes(t);
 }
 
 size_t q8_bytes(int64_t rows, int64_t cols) {
@@ -245,27 +277,25 @@ void quantize(const float* x, const int32_t* ids, void* xq, int t, int64_t cols,
 }
 
 void quantize_f16(const uint16_t* x, const int32_t* ids, void* xq, int t, int64_t cols, int64_t ld, int64_t rows,
-                  void* stream) {
+                  void* stream, const float* signs) {
     if (rows <= 0) return;
     const int64_t ne0 = pad512(cols);
     constexpr int B = CUDA_QUANTIZE_BLOCK_SIZE_MMQ;
     const dim3 grid((unsigned) rows, (unsigned) ((ne0 + 4 * B - 1) / (4 * B)));
     const cudaStream_t s = (cudaStream_t) stream;
     const half* h = (const half*) x;
+    const float scale = 1.0f / sqrtf(128.0f);
+#define LAMINA_QF16(L) (signs != nullptr ? quantize_mmq_q8_1_f16<L, true><<<grid, B, 0, s>>>(h, ids, xq, cols, ld, ne0, (int) rows, signs, scale) \
+                                         : quantize_mmq_q8_1_f16<L, false><<<grid, B, 0, s>>>(h, ids, xq, cols, ld, ne0, (int) rows, nullptr, 1.0f))
     switch (mmq_get_q8_1_ds_layout((ggml_type) t)) {
-        case MMQ_Q8_1_DS_LAYOUT_D4:
-            quantize_mmq_q8_1_f16<MMQ_Q8_1_DS_LAYOUT_D4><<<grid, B, 0, s>>>(h, ids, xq, cols, ld, ne0, (int) rows);
-            break;
-        case MMQ_Q8_1_DS_LAYOUT_DS4:
-            quantize_mmq_q8_1_f16<MMQ_Q8_1_DS_LAYOUT_DS4><<<grid, B, 0, s>>>(h, ids, xq, cols, ld, ne0, (int) rows);
-            break;
-        case MMQ_Q8_1_DS_LAYOUT_D2S6:
-            quantize_mmq_q8_1_f16<MMQ_Q8_1_DS_LAYOUT_D2S6><<<grid, B, 0, s>>>(h, ids, xq, cols, ld, ne0, (int) rows);
-            break;
+        case MMQ_Q8_1_DS_LAYOUT_D4: LAMINA_QF16(MMQ_Q8_1_DS_LAYOUT_D4); break;
+        case MMQ_Q8_1_DS_LAYOUT_DS4: LAMINA_QF16(MMQ_Q8_1_DS_LAYOUT_DS4); break;
+        case MMQ_Q8_1_DS_LAYOUT_D2S6: LAMINA_QF16(MMQ_Q8_1_DS_LAYOUT_D2S6); break;
         default:
             std::fprintf(stderr, "prefill mmq: no q8_1 layout for type %d\n", t);
             std::exit(1);
     }
+#undef LAMINA_QF16
     ck(cudaGetLastError(), "quantize_f16");
 }
 
@@ -292,6 +322,11 @@ bool run_tab(ggml_backend_cuda_context* ctx, ggml_type t, const mmq_args& a, con
         LAMINA_TAB_CASE(GGML_TYPE_IQ4_NL);
         LAMINA_TAB_CASE(GGML_TYPE_Q5_1);
         LAMINA_TAB_CASE(GGML_TYPE_Q8_0);
+#if defined(LAMINA_MMQ_TQP)
+        LAMINA_TAB_CASE(GGML_TYPE_TQP5);
+        LAMINA_TAB_CASE(GGML_TYPE_TQP6);
+        LAMINA_TAB_CASE(GGML_TYPE_TQP7);
+#endif
 #undef LAMINA_TAB_CASE
         default: return false;
     }
@@ -301,7 +336,7 @@ bool run_tab(ggml_backend_cuda_context* ctx, ggml_type t, const mmq_args& a, con
 
 bool tab_takes(int t, int64_t w_rows, int64_t w_cols) {
 #if defined(LAMINA_MMQ_TAB)
-    return w_rows % 128 == 0 && w_cols % ggml_blck_size((ggml_type) t) == 0 &&
+    return w_rows % 128 == 0 && w_cols % type_blck(t) == 0 &&
            run_tab(nullptr, (ggml_type) t, mmq_args{}, mmq_x_tab{}, nullptr);
 #else
     (void) t; (void) w_rows; (void) w_cols;
@@ -312,7 +347,7 @@ bool tab_takes(int t, int64_t w_rows, int64_t w_cols) {
 size_t tab_overread(int t, int64_t w_cols) {
     // the k loop's step (K_vram) for every tile width the launch may pick (fallback = false, the tab kernels' only)
     const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
-    const int64_t qk = ggml_blck_size((ggml_type) t), bpr = w_cols / qk;
+    const int64_t qk = type_blck(t), bpr = w_cols / qk;
     int64_t most = 0;
     for (int J = 8; J <= 128; J += 8) {
         const ggml_cuda_mmq_config c = ggml_cuda_mmq_get_config((ggml_type) t, J, false, cc);
@@ -320,7 +355,7 @@ size_t tab_overread(int t, int64_t w_cols) {
         const int64_t bpi = c.K_vram / qk;
         most = std::max<int64_t>(most, (bpr + bpi - 1) / bpi * bpi - bpr);
     }
-    return (size_t) most * ggml_type_size((ggml_type) t);
+    return (size_t) most * type_bytes(t);
 }
 
 namespace {
@@ -336,14 +371,13 @@ __global__ void zero_after_kernel(const __grid_constant__ ZeroArgs za, int words
 
 void zero_after(uint8_t* const* at, int n, size_t bytes, void* stream) {
     if (n <= 0 || bytes == 0) return;
-    if (n > kGatherGroupMax || bytes % 4 != 0 || bytes > 4096) {
-        std::fprintf(stderr, "prefill mmq: zero_after takes up to %d places of up to 4096 bytes in words\n",
-                     kGatherGroupMax);
+    if (n > kGatherGroupMax || bytes > 4096) {
+        std::fprintf(stderr, "prefill mmq: zero_after takes up to %d places of up to 4096 bytes\n", kGatherGroupMax);
         std::exit(1);
     }
     ZeroArgs za{};
     for (int q = 0; q < n; ++q) za.at[q] = (uint32_t*) at[q];
-    const int words = (int) (bytes / 4);
+    const int words = (int) ((bytes + 3) / 4);   // a trellis block's bytes are not whole words
     zero_after_kernel<<<(unsigned) n, (unsigned) ((words + 31) / 32 * 32), 0, (cudaStream_t) stream>>>(za, words);
     ck(cudaGetLastError(), "zero_after");
 }
@@ -351,10 +385,10 @@ void zero_after(uint8_t* const* at, int n, size_t bytes, void* stream) {
 void Context::run(const Product& p, void* stream) {
     if (p.n <= 0 || p.max_rows <= 0) return;
     const ggml_type t = (ggml_type) p.type;
-    const int64_t qk = ggml_blck_size(t), bpr = p.w_cols / qk;
+    const int64_t qk = type_blck(t), bpr = p.w_cols / qk;
     const mmq_args a = {(const char*) p.w, t, (const int*) p.xq, p.ids, p.bounds, p.dst, nullptr,
                         p.w_cols, p.w_rows, p.total_rows, bpr, p.total_rows, p.ld_dst,
-                        p.n, p.n, p.tab ? 0 : (int64_t) (p.expert_bytes / ggml_type_size(t)), 0, 0,
+                        p.n, p.n, p.tab ? 0 : (int64_t) (p.expert_bytes / type_bytes(t)), 0, 0,
                         1, 1, 0, 0, 0,
                         p.max_rows, p.max_rows};
     auto& ctx = *(ggml_backend_cuda_context*) ctx_;
@@ -368,7 +402,7 @@ void Context::run(const Product& p, void* stream) {
             return;
         }
 #endif
-        std::fprintf(stderr, "prefill mmq: no pointer-table MMQ for %s [%lld, %lld] (%d experts)\n", ggml_type_name(t),
+        std::fprintf(stderr, "prefill mmq: no pointer-table MMQ for %s [%lld, %lld] (%d experts)\n", type_str(t),
                      (long long) p.w_rows, (long long) p.w_cols, p.n);
         std::exit(1);
     }
@@ -387,6 +421,11 @@ void Context::run(const Product& p, void* stream) {
         case GGML_TYPE_Q5_K: mul_mat_q_case<GGML_TYPE_Q5_K>(ctx, a, s); break;
         case GGML_TYPE_Q6_K: mul_mat_q_case<GGML_TYPE_Q6_K>(ctx, a, s); break;
         case GGML_TYPE_Q5_1: mul_mat_q_case<GGML_TYPE_Q5_1>(ctx, a, s); break;
+#if defined(LAMINA_MMQ_TQP)
+        case GGML_TYPE_TQP5: mul_mat_q_case<GGML_TYPE_TQP5>(ctx, a, s); break;
+        case GGML_TYPE_TQP6: mul_mat_q_case<GGML_TYPE_TQP6>(ctx, a, s); break;
+        case GGML_TYPE_TQP7: mul_mat_q_case<GGML_TYPE_TQP7>(ctx, a, s); break;
+#endif
         default:
             std::fprintf(stderr, "prefill mmq: type %d is not covered\n", (int) t);
             std::exit(1);
@@ -473,7 +512,8 @@ void swiglu(const float* gu, float* h, int64_t rows, int64_t n_ff, bool interlea
     ck(cudaGetLastError(), "swiglu");
 }
 
-void swiglu_quantize(const float* gu, void* xq, int t, int64_t rows, int64_t n_ff, bool interleaved, void* stream) {
+void swiglu_quantize(const float* gu, void* xq, int t, int64_t rows, int64_t n_ff, bool interleaved, void* stream,
+                     const float* signs) {
     if (rows <= 0) return;
     if (n_ff % 4 != 0) {
         std::fprintf(stderr, "prefill mmq: swiglu_quantize needs a multiple of 4 values a row (%lld)\n", (long long) n_ff);
@@ -483,8 +523,10 @@ void swiglu_quantize(const float* gu, void* xq, int t, int64_t rows, int64_t n_f
     constexpr int B = CUDA_QUANTIZE_BLOCK_SIZE_MMQ;
     const dim3 grid((unsigned) rows, (unsigned) ((ne0 + 4 * B - 1) / (4 * B)));
     const cudaStream_t s = (cudaStream_t) stream;
-#define LAMINA_SWQ(L) (interleaved ? swiglu_quantize_mmq_q8_1<L, true><<<grid, B, 0, s>>>(gu, xq, n_ff, ne0, (int) rows) \
-                                   : swiglu_quantize_mmq_q8_1<L, false><<<grid, B, 0, s>>>(gu, xq, n_ff, ne0, (int) rows))
+    const float scale = 1.0f / sqrtf(128.0f);
+#define LAMINA_SWQ(L) (signs != nullptr ? swiglu_quantize_mmq_q8_1<L, false, true><<<grid, B, 0, s>>>(gu, xq, n_ff, ne0, (int) rows, signs, scale) \
+                       : interleaved ? swiglu_quantize_mmq_q8_1<L, true, false><<<grid, B, 0, s>>>(gu, xq, n_ff, ne0, (int) rows, nullptr, 1.0f) \
+                                     : swiglu_quantize_mmq_q8_1<L, false, false><<<grid, B, 0, s>>>(gu, xq, n_ff, ne0, (int) rows, nullptr, 1.0f))
     switch (mmq_get_q8_1_ds_layout((ggml_type) t)) {
         case MMQ_Q8_1_DS_LAYOUT_D4: LAMINA_SWQ(MMQ_Q8_1_DS_LAYOUT_D4); break;
         case MMQ_Q8_1_DS_LAYOUT_DS4: LAMINA_SWQ(MMQ_Q8_1_DS_LAYOUT_DS4); break;

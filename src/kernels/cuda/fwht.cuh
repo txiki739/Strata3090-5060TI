@@ -4,6 +4,29 @@
 // the register bits.
 #pragma once
 
+// The same of a 128-value block (Hadamard-folded experts, hadamard.hpp), lane l holding values l + 32 i (i = 0..3) in v[i]: the
+// butterflies in hadamard_rotate's order, then its scale, 1 / sqrt(128): the CPU's floats, bitwise.
+__device__ __forceinline__ void fwht128_warp(float (&v)[4], int lane, float scale) {
+#pragma unroll
+    for (int h = 1; h < 32; h <<= 1)
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const float o = __shfl_xor_sync(0xffffffffu, v[i], h);
+            v[i] = (lane & h) ? o - v[i] : v[i] + o;
+        }
+#pragma unroll
+    for (int h = 1; h < 4; h <<= 1)
+#pragma unroll
+        for (int i = 0; i < 4; ++i)
+            if ((i & h) == 0) {
+                const float a = v[i], b = v[i + h];
+                v[i] = a + b;
+                v[i + h] = a - b;
+            }
+#pragma unroll
+    for (int i = 0; i < 4; ++i) v[i] *= scale;
+}
+
 __device__ __forceinline__ void fwht256_warp(float (&v)[8], int lane) {
 #pragma unroll
     for (int i = 0; i < 8; ++i) v[i] *= 0.0625f;

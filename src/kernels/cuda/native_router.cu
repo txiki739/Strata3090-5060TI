@@ -156,7 +156,7 @@ __device__ __forceinline__ void quantize_rows(const VerifyRouterArgs& a, int b) 
     const int t = (int) threadIdx.x, lane = t & 31, warp = t >> 5, per = a.n_embd / 256;
     const int groups = (per + kGroup - 1) / kGroup, tok = b / groups, sb0 = (b % groups) * kGroup;
     const int ns = min(kGroup, per - sb0);
-    const float* xr = a.x + (size_t) tok * a.n_embd + (size_t) sb0 * 256;
+    const float* xr = (a.x_rows != nullptr ? a.x_rows : a.x) + (size_t) tok * a.n_embd + (size_t) sb0 * 256;
     float x[kGroup];
 #pragma unroll
     for (int j = 0; j < kGroup; ++j) x[j] = j < ns ? xr[j * 256 + t] : 0.0f;
@@ -178,6 +178,7 @@ __device__ __forceinline__ void quantize_rows(const VerifyRouterArgs& a, int b) 
         uint8_t* q1 = reinterpret_cast<uint8_t*>(s_q1) + (j * 8 + warp) * kQ81Bytes;
         q1[4 + lane] = (uint8_t) (int8_t) q;
         if (lane == 0) *reinterpret_cast<half2*>(q1) = q8_1_ds(d, sum);
+        if (a.xk_out == nullptr) continue;
         // Q8_K: the superblock's first value of the largest magnitude, from each warp's
         const int first = __reduce_min_sync(0xffffffffu, ax == amax ? lane : 32);
         const float wmax = __shfl_sync(0xffffffffu, x[j], first & 31);
@@ -191,7 +192,7 @@ __device__ __forceinline__ void quantize_rows(const VerifyRouterArgs& a, int b) 
     uint8_t* qk = reinterpret_cast<uint8_t*>(s_qk);
 #pragma unroll
     for (int j = 0; j < kGroup; ++j) {
-        if (j >= ns) break;
+        if (j >= ns || a.xk_out == nullptr) break;
         unsigned best = 0u;
         float mx = 0.0f;
         for (int w = 0; w < 8; ++w)

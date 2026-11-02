@@ -1,5 +1,6 @@
 // src/kernels/cpu/expert_layout.cpp - plan v0.3 P6: the per-layer expert table.  See the header.
 #include "lamina/kernels/cpu/expert_layout.hpp"
+#include "lamina/kernels/cpu/hadamard.hpp"
 
 #include <atomic>
 #include <cstdio>
@@ -356,6 +357,13 @@ bool native_layout_load(std::istream& in, int64_t n_layers, int64_t n_expert, st
         }
         NativeFmt f;
         if (!native_fmt((int) gt, (int) dt, H, FF, f, err)) return false;
+        if (const HadamardSpec& hs = hadamard_spec(); hs.any()) {
+            f.had_block = hs.block;
+            f.had_gu = hs.gu(l);
+            f.had_d = hs.down(l);
+            f.gu_signs = f.had_gu ? hadamard_signs((int) f.n_embd) : nullptr;
+            f.d_signs = f.had_d ? hadamard_signs((int) f.n_ff) : nullptr;
+        }
         if (f.bytes != blob) {
             err = "native_experts.txt: layer " + std::to_string(l) + " blob is " + std::to_string(blob) +
                   " B but its formats make " + std::to_string(f.bytes);

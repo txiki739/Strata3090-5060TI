@@ -16,6 +16,7 @@
 #pragma once
 
 #include "lamina/core/weights.hpp"
+#include "lamina/kernels/cpu/hadamard.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -55,6 +56,8 @@ public:
 
     const std::string& index_text() const override { return index_; }
     const std::string& native_experts_text() const { return experts_; }
+    /// prism.hadamard: the folded experts' rotation (block 0: none), for cpu::hadamard_set before the layout is read
+    const lamina::kernels::cpu::HadamardSpec& hadamard() const { return hadamard_; }
     /// dense.bin's bytes [offset, offset + n): the pieces' bytes converted as they are read, the padding zeros.
     /// Opens the shards it needs for each call, so concurrent calls are safe.
     bool read(uint64_t offset, size_t n, void* dst, std::string& err) const override;
@@ -69,6 +72,7 @@ public:
 private:
     std::string source_;              ///< the first shard's file name
     std::vector<std::string> shards_;
+    lamina::kernels::cpu::HadamardSpec hadamard_;
     std::string index_, experts_;
     std::vector<Piece> pieces_;       ///< in dense.bin's order
     uint64_t dense_bytes_ = 0;

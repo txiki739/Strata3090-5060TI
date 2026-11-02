@@ -8,6 +8,7 @@
 #include "lamina/core/native_head.hpp"
 #include "lamina/kernels/iq_kernels.hpp"
 #include "lamina/kernels/cpu/expert_layout.hpp"
+#include "lamina/kernels/cpu/hadamard.hpp"
 #include "lamina/kernels/bf16_gemv.hpp"
 #include "lamina/kernels/cpu/expert.hpp"
 #include "lamina/kernels/elementwise.hpp"
@@ -177,8 +178,11 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
     list2_stride_ = (4 + (int64_t) (T * K) + 3) & ~3ll;
     const auto& lay = lamina::kernels::cpu::expert_layout();
     xk_layer_.assign((size_t) g.n_layers, 0);
-    for (int64_t l = 0; l < g.n_layers; ++l)
+    x1_layer_.assign((size_t) g.n_layers, 0);
+    for (int64_t l = 0; l < g.n_layers; ++l) {
         xk_layer_[(size_t) l] = pool_takes_q8k(lay.fmt[(size_t) l]);
+        x1_layer_[(size_t) l] = pool_takes_q8_1(lay.fmt[(size_t) l]);
+    }
     xk_stride_ = ((int64_t) (N / 256) * 292 + 15) & ~15ll;
     bool ok = mapped(T * 4, (void**) &h_tok_, (void**) &m_tok_) &&
               mapped(T * lamina::kernels::kStepCount * 4, (void**) &h_step_, (void**) &m_step_) &&
@@ -272,7 +276,13 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
         res_ = b.take<int32_t>((uint64_t) res_words_); slot_ptr_ = b.take<unsigned long long>((uint64_t) hits.slots);
         staging_ = b.take<uint8_t>((uint64_t) kStagingBlobs * lamina::kernels::cpu::expert_layout().max_blob);
         nat_xq_ = b.take<uint8_t>(T * (N / 32) * 36);
-        hit_scratch_ = b.take<uint8_t>(lamina::kernels::native_expert_scratch_bytes((int64_t) (T * K), g.n_ff));
+        const bool rotated = lamina::kernels::cpu::hadamard_spec().any();
+        hit_scratch_ = b.take<uint8_t>(lamina::kernels::native_expert_scratch_bytes((int64_t) (T * K), g.n_ff, rotated));
+        if (rotated) {
+            xr_ = b.take<float>(T * N);
+            had_sx_ = lamina::kernels::hadamard_device_signs(lamina::kernels::cpu::hadamard_signs((int) N), (int) N);
+            had_sh_ = lamina::kernels::hadamard_device_signs(lamina::kernels::cpu::hadamard_signs((int) g.n_ff), (int) g.n_ff);
+        }
         head_mixed_ = b.take<float>(T * N); head_inj_ = b.take<float>(HC);
         sh_gate_ = b.take<float>(T * (uint64_t) g.n_ff);
         sh_up_ = b.take<float>(T * (uint64_t) g.n_ff); sh_g_ = b.take<float>(T + 4);
@@ -763,11 +773,15 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
         VerifyRouterArgs ra;
         ra.x = xm; ra.w = (const uint16_t*) wr->data; ra.logits = logits_ + tb * NE;
         ra.ids = ids_ + tb * K; ra.weights = w_ + tb * K;
-        ra.x_out = xk_layer_[(size_t) l] ? nullptr : m_x_ + tb * N;
+        ra.x_out = xk_layer_[(size_t) l] || x1_layer_[(size_t) l] ? nullptr : m_x_ + tb * N;
+        if (x1_layer_[(size_t) l]) {   // the rows the experts take, from the rotated input
+            hadamard_rows(xm, xr_ + tb * N, n, N, had_sx_, cs);
+            ra.x_rows = xr_ + tb * N;
+        }
         ra.ids_out = m_ids_ + tb * K; ra.w_out = m_w_ + tb * K; ra.seq = m_seq_;
         // the q8_1 rows for both GPUs' experts, the Q8_K rows for the CPU's
         ra.xq1 = nat_xq_ + (size_t) tb * (N / 32) * 36;
-        ra.xq1_out = n_tiers_ > 0 ? m_xq1_ + (size_t) tb * (N / 32) * 36 : nullptr;
+        ra.xq1_out = n_tiers_ > 0 || x1_layer_[(size_t) l] ? m_xq1_ + (size_t) tb * (N / 32) * 36 : nullptr;
         ra.xk_out = xk_layer_[(size_t) l] ? m_xk_ + (size_t) tb * (size_t) xk_stride_ : nullptr;
         ra.xk_stride = (int) xk_stride_;
         ra.ring = (uint32_t) (l * G + grp + 1);   // the rings so far (the host waits for this one)
@@ -877,8 +891,12 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
         auto grouped = [&](const Plan& p, const unsigned long long* gp, const int32_t* gs, const int32_t* gn) {
             // the layer's GGUF formats (i-quant gate/up, Q2_0 / IQ4_NL down)
             const auto& f = lay.fmt[(size_t) l];
-            const NativeExpertLayout L = native_expert_layout(f.gu_type, f.d_type, f.n_embd, f.n_ff,
-                                                              gpu_expert_act(f.gu_act), gpu_expert_act(f.d_act));
+            NativeExpertLayout L = native_expert_layout(f.gu_type, f.d_type, f.n_embd, f.n_ff, gpu_expert_act(f.gu_act),
+                                                        gpu_expert_act(f.d_act));
+            if (f.had_d) {
+                L.had_block = f.had_block;
+                L.d_signs = had_sh_;
+            }
             // --expert-math exact on a K-quant layer: the CPU's Q8_K rows, quantized here from the FFN input
             // (quantize_q8_K is bitwise ggml's quantize_row_q8_K, as the router kernel's rows for the pool are)
             const uint8_t* xa = nat_xq_ + (size_t) tb * (N / 32) * 36;
@@ -1241,9 +1259,9 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
         cur_layer_ = want - 1;
         set_plan_slot(grp);
         const int tb = gtb[grp], n = gte[grp] - gtb[grp];
-        sink_.xk = xk_layer_[(size_t) l] ? h_xk_ + (size_t) tb * (size_t) xk_stride_ : nullptr;
-        sink_.xk_stride = xk_stride_;
         sink_.x1 = h_xq1_ + (size_t) tb * (size_t) (g.n_embd / 32) * 36;
+        sink_.xk = xk_layer_[(size_t) l] ? h_xk_ + (size_t) tb * (size_t) xk_stride_ : x1_layer_[(size_t) l] ? sink_.x1 : nullptr;
+        sink_.xk_stride = x1_layer_[(size_t) l] ? (g.n_embd / 32) * 36 : xk_stride_;
         if (pool != nullptr)
             pool(user, h_x_ + (size_t) tb * g.n_embd, h_ids_ + (size_t) tb * ss.k, h_w_ + (size_t) tb * ss.k, n,
                  ss.k, h_ymiss_ + (size_t) tb * ss.k * g.n_embd, l);

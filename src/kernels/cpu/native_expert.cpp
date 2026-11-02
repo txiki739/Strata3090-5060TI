@@ -8,6 +8,8 @@
 #include "lamina/kernels/cpu/iq_avx1.hpp"
 #include "lamina/kernels/cpu/kq_avx2.hpp"
 #include "lamina/kernels/cpu/expert_layout.hpp"
+#include "lamina/kernels/cpu/hadamard.hpp"
+#include "lamina/kernels/cpu/tq_cpu.hpp"
 #include "lamina/kernels/expf_contract.hpp"
 
 #include "ggml.h"
@@ -46,6 +48,33 @@ bool iq256_supported(int type) noexcept {
 
 bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt& f, std::string& err) {
     init_once();
+    if (tq_supported(gu_type) || tq_supported(d_type)) {   // not ggml types here: tq_cpu.hpp's kernels, q8_1 activations
+        if (!tq_supported(gu_type) || !tq_supported(d_type)) {
+            err = "native experts: a layer of trellis experts with a down or gate/up of another format";
+            return false;
+        }
+        if (n_embd > H || n_ff > FF || n_embd % kTqBlock || n_ff % kTqBlock) {
+            err = "native experts: the trellis experts' geometry is not whole blocks of the pool's rows";
+            return false;
+        }
+        f.gu_type = gu_type;
+        f.d_type = d_type;
+        f.gu_act = f.d_act = (int) GGML_TYPE_Q8_1;
+        f.n_embd = n_embd;
+        f.n_ff = n_ff;
+        f.gu_row = (size_t) (n_embd / kTqBlock) * tq_block_bytes(gu_type);
+        f.d_row = (size_t) (n_ff / kTqBlock) * tq_block_bytes(d_type);
+        f.up_off = f.gu_row * (size_t) n_ff;
+        f.down_off = 2 * f.up_off;
+        f.bytes = f.down_off + f.d_row * (size_t) n_embd;
+        f.act_bytes = (size_t) (n_embd / 32) * 36;
+        f.h_bytes = (size_t) (n_ff / 32) * 36;
+        if (f.act_bytes > kNativeActBytes || f.h_bytes > kNativeHBytes) {
+            err = "native experts: activation larger than the pool's buffers";
+            return false;
+        }
+        return true;
+    }
     const ggml_type_traits_cpu* tg = traits(gu_type);
     const ggml_type_traits_cpu* td = traits(d_type);
     if (tg == nullptr || tg->vec_dot == nullptr || td == nullptr || td->vec_dot == nullptr) {
@@ -147,12 +176,26 @@ int ggml_q5_K_mins_rounding() {
 }
 
 void native_quant_act(const NativeFmt& f, const float* x, void* dst) {
+    if (f.had_gu) {
+        float r[H];
+        std::memcpy(r, x, (size_t) f.n_embd * sizeof(float));
+        hadamard_rotate(r, (int) f.n_embd, f.had_block, f.gu_signs);
+        traits(f.gu_act)->from_float(r, dst, f.n_embd);
+        return;
+    }
     if (q8k_avx2(f.gu_act)) { q8k_quant_avx2(x, dst, f.n_embd); return; }
     if (q8k_avx1(f.gu_act)) { q8k_quant_avx1(x, dst, f.n_embd); return; }
     traits(f.gu_act)->from_float(x, dst, f.n_embd);
 }
 
 void native_quant_h(const NativeFmt& f, const float* h, void* dst) {
+    if (f.had_d) {
+        float r[FF];
+        std::memcpy(r, h, (size_t) f.n_ff * sizeof(float));
+        hadamard_rotate(r, (int) f.n_ff, f.had_block, f.d_signs);
+        traits(f.d_act)->from_float(r, dst, f.n_ff);
+        return;
+    }
     if (q8k_avx2(f.d_act)) { q8k_quant_avx2(h, dst, f.n_ff); return; }
     if (q8k_avx1(f.d_act)) { q8k_quant_avx1(h, dst, f.n_ff); return; }
     traits(f.d_act)->from_float(h, dst, f.n_ff);
@@ -179,6 +222,10 @@ int native_gu_mt_min(int gu_type) {
 
 void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* act, int nt, float* const* ff,
                     int r0, int r1) {
+    if (tq_supported(f.gu_type)) {
+        tq_gu_rows(f.gu_type, blob, f.gu_row, f.up_off, (int) f.n_embd, act, nt, ff, r0, r1);
+        return;
+    }
     // the multi-token kernels decode the weights once for all tokens: 2.0-2.4x ggml-cpu at three tokens, no faster
     // at one (all are bound by the codebook lookups, ~5 GB/s per core), measured by native_expert_parity.  AVX-512
     // first, then the AVX-2 one (Zen 2/3, Intel 12th-14th gen).  LAMINA_NO_IQ512 drops an AVX-512 CPU to the
@@ -245,6 +292,10 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
 
 void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const* hq, int nt, float* const* out,
                       int r0, int r1) {
+    if (tq_supported(f.d_type)) {
+        tq_rows(f.d_type, blob + f.down_off, f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);
+        return;
+    }
     // IQ4_NL down rows: the AVX-2 multi-token kernel decodes the nibbles and absolutises the weights once per
     // block instead of once per token; ggml-cpu's dot is single-token.  LAMINA_NO_IQ4NL falls back to it.
     static const bool iq4nl_mt = std::getenv("LAMINA_NO_IQ4NL") == nullptr;

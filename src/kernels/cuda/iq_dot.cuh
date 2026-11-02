@@ -12,6 +12,8 @@
 #define GGML_COMMON_DECL_CUDA
 #define GGML_COMMON_IMPL_CUDA
 #include "ggml-common.h"
+#include "ggml-common-tq.h"
+#include "tq_lut_i8.cuh"
 #include "lamina/kernels/dp4a.hpp"
 #include "lamina/kernels/warp.cuh"
 #include <type_traits>
@@ -807,6 +809,67 @@ template<> struct Split<42> : SplitNoGrid {   // Q2_0
         return w.d2 * a.d8 * sumi;
     }
 };
+// Gyro-L's pair trellis (TQP5, TQP6, TQP7: third_party/ggml-tq): a call is a lane of 8 steps, 16 weights.  The steps' 15-bit states
+// lie in the 64 bits from stream bit S = (56 - 8l) * K, a whole number of bytes, so r = S & 15 is 0 or 8 and five u16 words wrapped
+// over the block's 4 * K cover them (the fifth only when K > 5); qs is 2-byte aligned, every trellis block being of even size.  A
+// state hashes to a point of the int8 codebook (`grid`, one global scale): two weights, so the lane's 16 are 4 ints of int8 and
+// the dot is 4 dp4a.  The lane reads half of q8_1 block l / 2.
+template<int K>
+__device__ __forceinline__ void tqp_states8(const uint8_t* __restrict__ qs, int l, uint32_t (&s)[8]) {
+    constexpr int nwords = 4 * K;
+    const uint16_t* qs16 = (const uint16_t*) qs;
+    const int S = (56 - 8 * l) * K, wb = S >> 4, r = S & 15;
+    const int wi1 = wb + 1 >= nwords ? wb + 1 - nwords : wb + 1;
+    const int wi2 = wb + 2 >= nwords ? wb + 2 - nwords : wb + 2;
+    const int wi3 = wb + 3 >= nwords ? wb + 3 - nwords : wb + 3;
+    uint64_t v = (uint64_t) qs16[wb] | ((uint64_t) qs16[wi1] << 16) | ((uint64_t) qs16[wi2] << 32) |
+                 ((uint64_t) qs16[wi3] << 48);
+    v >>= r;
+    if constexpr (8 + 7 * K + TQ_STATE_BITS > 64) {
+        const int wi4 = wb + 4 >= nwords ? wb + 4 - nwords : wb + 4;
+        v |= r ? (uint64_t) qs16[wi4] << (64 - r) : 0;
+    }
+#pragma unroll
+    for (int j = 0; j < 8; ++j) s[j] = (uint32_t) (v >> ((7 - j) * K)) & TQ_STATE_MASK;
+}
+template<int K>
+struct SplitTqp {
+    using A = SplitAct<4>;
+    struct W { int q[4]; float dw; };
+    static constexpr int grid_bytes = sizeof(tq_lut_i8);
+    __device__ static const void* grid() { return tq_lut_i8; }
+    __device__ static W load(const void* __restrict__ vbq, int kbx, int iqs, const void* lut) {
+        const uint8_t* b = (const uint8_t*) vbq + (size_t) kbx * (2 + 8 * K);
+        uint32_t s[8];
+        tqp_states8<K>(b + 2, iqs / 4, s);
+        const uint16_t* t = (const uint16_t*) lut;
+        W w;
+#pragma unroll
+        for (int i = 0; i < 4; ++i)
+            w.q[i] = (int) ((uint32_t) t[(s[2 * i] * 0x9e3779b1u) >> 21] | ((uint32_t) t[(s[2 * i + 1] * 0x9e3779b1u) >> 21] << 16));
+        w.dw = __half2float(__ushort_as_half(*(const uint16_t*) b));
+        return w;
+    }
+    __device__ static A fetch(const block_q8_1* __restrict__ bq8_1, int iqs) {
+        const int l = iqs / 4;
+        const block_q8_1* b8 = bq8_1 + l / 2;
+        const int* q8 = (const int*) b8->qs + 4 * (l & 1);
+        A a;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) a.u[i] = q8[i];
+        a.d8 = __low2float(b8->ds);
+        return a;
+    }
+    __device__ static float apply(const W& w, const A& a) {
+        int sumi = 0;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) sumi = ggml_cuda_dp4a(w.q[i], a.u[i], sumi);
+        return w.dw * (a.d8 * TQ_LUT_I8_SCALE) * (float) sumi;
+    }
+};
+template<> struct Split<147> : SplitTqp<5> {};
+template<> struct Split<148> : SplitTqp<6> {};
+template<> struct Split<149> : SplitTqp<7> {};
 
 // ---------------------------------------------------------------- the formats
 // qk = values per block, ipb = dot calls per block (qi / vdr), step = the iqs stride between calls.
@@ -842,8 +905,17 @@ template<> struct Fmt<19> { static constexpr int qk = 256, ipb = QI1_S, step = 1
 template<> struct Fmt<23> { static constexpr int qk = 256, ipb = QI4_XS / 4, step = 4;
     __device__ static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_iq4_xs_q8_1(v, y, kbx, iqs); } };
 
+#define LAMINA_TQP_FMT(T) template<> struct Fmt<T> { static constexpr int qk = 128, ipb = 8, step = 4; \
+    __device__ static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { \
+        return Split<T>::apply(Split<T>::load(v, kbx, iqs, tq_lut_i8), Split<T>::fetch(y, iqs)); } };
+LAMINA_TQP_FMT(147)
+LAMINA_TQP_FMT(148)
+LAMINA_TQP_FMT(149)
+#undef LAMINA_TQP_FMT
+
 // Every format above, for the dispatch switches: X(type) once per Fmt<type>.
-#define LAMINA_FMTS(X) X(7) X(8) X(12) X(13) X(14) X(16) X(17) X(18) X(19) X(20) X(21) X(22) X(23) X(29) X(42)
+#define LAMINA_TQP_FMTS(X) X(147) X(148) X(149)
+#define LAMINA_FMTS(X) X(7) X(8) X(12) X(13) X(14) X(16) X(17) X(18) X(19) X(20) X(21) X(22) X(23) X(29) X(42) LAMINA_TQP_FMTS(X)
 
 inline int fmt_qk(int t) {
     switch (t) {

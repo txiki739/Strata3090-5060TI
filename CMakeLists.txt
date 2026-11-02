@@ -161,7 +161,7 @@ if(LAMINA_ENABLE_CUDA)
                           src/platform/direct_file.cpp)
   target_link_libraries(lamina_kernels PUBLIC lamina_core lamina_artifact)
   # plan v0.3 P6: llama.cpp's block layouts and codebook grids for the i-quant formats (MIT, third_party/ggml)
-  target_include_directories(lamina_kernels PRIVATE third_party/ggml)
+  target_include_directories(lamina_kernels PRIVATE third_party/ggml third_party/ggml-tq)
   # Match the pinned llama.cpp CUDA arithmetic contract for this adapter only.
   set_source_files_properties(src/kernels/cuda/native_mmvq.cu src/kernels/cuda/native_mma.cu src/kernels/cuda/native_bf16.cu
     src/kernels/cuda/native_gr_norm.cu
@@ -323,7 +323,7 @@ if(LAMINA_BUILD_TESTS)
 endif()
 
 add_library(lamina_kernels_cpu STATIC src/kernels/cpu/expert.cpp src/kernels/cpu/pool.cpp
-            src/kernels/cpu/expert_layout.cpp src/kernels/cpu/q2_avx2.cpp)
+            src/kernels/cpu/expert_layout.cpp src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/hadamard.cpp)
 target_include_directories(lamina_kernels_cpu PUBLIC include)
 # Plan v0.3 P6: only the kernel files get the AVX-512 / AVX2 flags; the pool and the probe run on any x86-64,
 # and the engine picks the kernels at run time (cpu_avx512_ok).
@@ -431,11 +431,13 @@ if(LAMINA_NATIVE_EXPERTS)
   # one-pass static linking has no cycle to resolve)
   target_sources(lamina_kernels_cpu PRIVATE src/kernels/cpu/native_expert.cpp src/kernels/cpu/iq_avx512.cpp
                                            src/kernels/cpu/iq_avx2.cpp src/kernels/cpu/kq_avx2.cpp
-                                           src/kernels/cpu/q2_avx1.cpp src/kernels/cpu/iq_avx1.cpp)
-  target_include_directories(lamina_kernels_cpu PRIVATE third_party/ggml)
+                                           src/kernels/cpu/q2_avx1.cpp src/kernels/cpu/iq_avx1.cpp
+                                           src/kernels/cpu/tq_cpu.cpp src/kernels/cpu/tq_avx2.cpp
+                                           src/kernels/cpu/tq_avx512.cpp)
+  target_include_directories(lamina_kernels_cpu PRIVATE third_party/ggml third_party/ggml-tq)
   if(MSVC)
-    set_source_files_properties(src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
-    set_source_files_properties(src/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    set_source_files_properties(src/kernels/cpu/iq_avx512.cpp src/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+    set_source_files_properties(src/kernels/cpu/iq_avx2.cpp src/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
     set_source_files_properties(src/kernels/cpu/kq_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
     # older CPUs' kernels (AVX1, called behind cpu_avx1_ok() && !cpu_avx2_ok()): no FMA, no 256-bit integer ops
     set_source_files_properties(src/kernels/cpu/q2_avx1.cpp src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
@@ -470,10 +472,27 @@ if(LAMINA_NATIVE_EXPERTS)
       set(_lamina_gg ${lamina_llamacpp_SOURCE_DIR}/ggml)
     endif()
     set(_lamina_mmq ${_lamina_gg}/src/ggml-cuda)
-    add_library(lamina_mmq STATIC src/prefill/moe_mmq.cu src/prefill/ggml_cuda_host.cu ${_lamina_mmq}/quantize.cu)
+    # Gyro-L's trellis types: an overlay of the pinned ggml-cuda headers, written at configure time
+    # (cmake/lamina_ggml_tq_overlay.cmake); off with a message on another llama.cpp tree (its prompts then read in FP16)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/lamina_ggml_tq_overlay.cmake)
+    set(_lamina_tq_dir ${CMAKE_BINARY_DIR}/ggml-tq-overlay)
+    get_filename_component(_lamina_tq_llama ${_lamina_gg} DIRECTORY)
+    lamina_ggml_tq_overlay(${_lamina_tq_llama} ${_lamina_tq_dir})
+    set(_lamina_quantize_cu ${_lamina_mmq}/quantize.cu)
+    if(LAMINA_TQ_OVERLAY_OK)
+      set(_lamina_quantize_cu ${_lamina_tq_dir}/quantize.cu)   # it includes mmq.cuh
+    endif()
+    add_library(lamina_mmq STATIC src/prefill/moe_mmq.cu src/prefill/ggml_cuda_host.cu ${_lamina_quantize_cu})
     foreach(_t q2_0 iq1_s iq2_xxs iq2_xs iq2_s iq3_xxs iq3_s iq4_nl iq4_xs q4_k q5_k q6_k q5_1 q8_0)
       target_sources(lamina_mmq PRIVATE ${_lamina_mmq}/template-instances/mmq-instance-${_t}.cu)
     endforeach()
+    if(LAMINA_TQ_OVERLAY_OK)
+      foreach(_t tqp5 tqp6 tqp7)
+        target_sources(lamina_mmq PRIVATE ${_lamina_tq_dir}/template-instances/mmq-instance-${_t}.cu)
+      endforeach()
+      target_include_directories(lamina_mmq BEFORE PRIVATE ${_lamina_tq_dir} ${_lamina_tq_dir}/include)
+      target_compile_definitions(lamina_mmq PRIVATE LAMINA_MMQ_TQP=1)
+    endif()
     # MMQ with a pointer per expert (src/prefill/moe_mmq_tab.cuh, upstream's copy of mmq.cuh's scheduler): the prompt
     # experts read in place.  The copy mirrors mmq.cuh from mul_mat_q_process_tile through mul_mat_q_case; another
     # llama.cpp tree (another fingerprint of that text) leaves it out, and the experts are gathered as before.  The
@@ -492,7 +511,11 @@ if(LAMINA_NATIVE_EXPERTS)
     unset(_lamina_tab_region)
     if(_lamina_tab_hash STREQUAL "36e4dc716c504470ec09cc0852d29a6ac5eace257f6e5e72db3805ca4f043eb0")   # 3cf03257
       set(_lamina_tab_cuh ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/moe_mmq_tab.cuh)
-      foreach(_t iq2_s iq3_xxs iq3_s iq4_xs q4_k q5_k q2_0 iq4_nl q5_1 q8_0)
+      set(_lamina_tab_types iq2_s iq3_xxs iq3_s iq4_xs q4_k q5_k q2_0 iq4_nl q5_1 q8_0)
+      if(LAMINA_TQ_OVERLAY_OK)
+        list(APPEND _lamina_tab_types tqp5 tqp6 tqp7)
+      endif()
+      foreach(_t ${_lamina_tab_types})
         string(TOUPPER ${_t} _lamina_tab_T)
         configure_file(src/prefill/mmq_tab_instance.cu.in ${CMAKE_BINARY_DIR}/mmq_tab/mmq-tab-${_t}.cu @ONLY)
         target_sources(lamina_mmq PRIVATE ${CMAKE_BINARY_DIR}/mmq_tab/mmq-tab-${_t}.cu)
@@ -526,15 +549,16 @@ if(LAMINA_NATIVE_EXPERTS)
     add_test(NAME mmq_tab_parity COMMAND mmq_tab_parity)
     add_executable(native_expert_parity src/kernels/native_expert_parity.cpp)
     target_include_directories(native_expert_parity PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-    target_link_libraries(native_expert_parity PRIVATE lamina_kernels lamina_kernels_cpu lamina_artifact CUDA::cudart)
+    target_link_libraries(native_expert_parity PRIVATE lamina_engine lamina_kernels lamina_kernels_cpu lamina_artifact CUDA::cudart)
     add_test(NAME native_expert_parity_k_quants COMMAND native_expert_parity --synthetic q4_K/q5_1 q5_K/q8_0)
+    add_test(NAME native_expert_parity_trellis COMMAND native_expert_parity --synthetic tqp5/tqp5 tqp6/tqp6 tqp7/tqp7)
     # --expert-math exact's expf: the CPU pool's (lamina_kernels_cpu) against the GPU's, over every float
     add_executable(swiglu_expf_parity src/kernels/swiglu_expf_parity.cu)
     target_link_libraries(swiglu_expf_parity PRIVATE lamina_kernels_cpu CUDA::cudart)
     add_test(NAME swiglu_expf_parity COMMAND swiglu_expf_parity)
     # The grouped native expert kernels against the ones they replaced, kept in the test: bitwise (synthetic experts).
     add_executable(expert_grouped_parity src/kernels/expert_grouped_parity.cu)
-    target_include_directories(expert_grouped_parity PRIVATE third_party/ggml src/kernels/cuda)
+    target_include_directories(expert_grouped_parity PRIVATE third_party/ggml third_party/ggml-tq src/kernels/cuda)
     target_link_libraries(expert_grouped_parity PRIVATE lamina_kernels lamina_kernels_cpu CUDA::cudart)
     add_test(NAME expert_grouped_parity COMMAND expert_grouped_parity)
 
@@ -609,7 +633,7 @@ if(TARGET cpp-httplib AND TARGET ggml-base)
   endif()
   add_library(lamina_text STATIC src/server/json.cpp src/server/log.cpp src/server/tokenizer.cpp
                                  src/server/frontend.cpp)
-  target_include_directories(lamina_text PUBLIC src/server)
+  target_include_directories(lamina_text PUBLIC src/server ${CMAKE_CURRENT_SOURCE_DIR}/tools/vision)
   target_link_libraries(lamina_text PUBLIC lamina_jinja lamina_unicode nlohmann ggml-base lamina_warnings)
   add_executable(lamina-check src/server/check.cpp)
   target_link_libraries(lamina-check PRIVATE lamina_text)

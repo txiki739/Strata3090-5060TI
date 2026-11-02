@@ -6,6 +6,7 @@
 #include "lamina/kernels/iq_kernels.hpp"
 #include "lamina/kernels/q8_1_finite.hpp"
 #include "iq_dot.cuh"
+#include "fwht.cuh"
 #include "q8_1_il.cuh"
 #include "lamina/kernels/expf_contract.hpp"
 #include "lamina/kernels/f16_bits.hpp"
@@ -14,6 +15,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
+#include <mutex>
+#include <tuple>
 
 namespace lamina::kernels {
 namespace {
@@ -317,14 +321,14 @@ __global__ void __launch_bounds__(GUS_WARPS * 32, 2) native_gus80_kernel(const u
 // The down row r for the NE entries from `e` on
 template<int TD, int G, int NS, int NE>
 __device__ __forceinline__ void down_pass(const uint8_t* wr, const block_q8_1* __restrict__ hq, int hb, int e, int t,
-                                          const int32_t* __restrict__ ent_dst, int64_t n_embd, int r,
+                                          const int32_t* __restrict__ ent_dst, int64_t n_embd, int r, const void* lut,
                                           float* __restrict__ out) {
     const uint8_t* const w[1] = {wr};
     const block_q8_1* x[NE];
 #pragma unroll
     for (int c = 0; c < NE; ++c) x[c] = hq + (size_t) (e + c) * hb;
     float v[1][NE];
-    rows_sub<TD, G, NS, 1, NE>(w, x, t, nullptr, v);
+    rows_sub<TD, G, NS, 1, NE>(w, x, t, lut, v);
     if (t == 0)
 #pragma unroll
         for (int c = 0; c < NE; ++c) out[(size_t) ent_dst[e + c] * n_embd + r] = v[0][c];
@@ -339,8 +343,16 @@ __global__ void __launch_bounds__(DOWN_WARPS * 32) native_down_sub_kernel(const 
                                                                           const int32_t* __restrict__ ent_dst,
                                                                           const block_q8_1* __restrict__ hq,
                                                                           NativeExpertLayout L, float* __restrict__ out) {
+    using S = Split<TD>;
     const int g = blockIdx.y;
     if (g >= *n_groups) return;
+    __shared__ __align__(16) uint32_t s_grid[S::grid_bytes > 0 ? S::grid_bytes / 4 : 1];
+    const void* lut = nullptr;
+    if constexpr (S::grid_bytes > 0) {   // the codebook in shared memory, as native_gus80_kernel
+        for (int i = threadIdx.x; i < S::grid_bytes / 4; i += blockDim.x) s_grid[i] = ((const uint32_t*) S::grid())[i];
+        lut = s_grid;
+        __syncthreads();
+    }
     const int lane = threadIdx.x & 31, t = lane & (G - 1);
     const int r = (blockIdx.x * DOWN_WARPS + (threadIdx.x >> 5)) * (32 / G) + lane / G;
     const uint8_t* wr = (const uint8_t*) grp_ptr[g] + L.down_off + (size_t) r * L.d_row;
@@ -348,12 +360,113 @@ __global__ void __launch_bounds__(DOWN_WARPS * 32) native_down_sub_kernel(const 
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
     for (int e = e0; e < e1; e += 4) {
         switch (min(4, e1 - e)) {
-            case 1: down_pass<TD, G, NS, 1>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, out); break;
-            case 2: down_pass<TD, G, NS, 2>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, out); break;
-            case 3: down_pass<TD, G, NS, 3>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, out); break;
-            default: down_pass<TD, G, NS, 4>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, out); break;
+            case 1: down_pass<TD, G, NS, 1>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, lut, out); break;
+            case 2: down_pass<TD, G, NS, 2>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, lut, out); break;
+            case 3: down_pass<TD, G, NS, 3>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, lut, out); break;
+            default: down_pass<TD, G, NS, 4>(wr, hq, hb, e, t, ent_dst, L.n_embd, r, lut, out); break;
         }
     }
+}
+
+// ---------------------------------------------------------------- Hadamard-folded experts (hadamard.hpp)
+// h is rotated over 128 of its n_ff values at a time, more than a block of the kernels above holds, so a layer takes three
+// kernels: the gate and up rows of 160 calls (n_embd 2560), h's floats by column; h rotated and quantized, an entry's 128 values
+// a warp; the down rows (native_down_sub_kernel).
+
+// The gate and up rows of h's column `col` for the NE entries from `e` on, SwiGLU into their rows of h
+template<int TG, int NE>
+__device__ __forceinline__ void gu_h_pass(const uint8_t* wg, const uint8_t* wu, const block_q8_1* __restrict__ xq,
+                                          const int32_t* __restrict__ tok, int t, const void* lut, float* h, int n_ff) {
+    const uint8_t* const w[2] = {wg, wu};
+    const block_q8_1* x[NE];
+#pragma unroll
+    for (int c = 0; c < NE; ++c) x[c] = xq + (size_t) tok[c] * 80;
+    float v[2][NE];
+    rows_sub<TG, 16, 160, 2, NE>(w, x, t, lut, v);
+    if (t == 0)
+#pragma unroll
+        for (int c = 0; c < NE; ++c) h[(size_t) c * n_ff] = (v[0][c] / (1.0f + __expf(-v[0][c]))) * v[1][c];
+}
+
+template<int TG>
+__global__ void __launch_bounds__(GUS_WARPS * 32, 2) native_gu_h_kernel(const unsigned long long* __restrict__ grp_ptr,
+                                                                        const int32_t* __restrict__ grp_start,
+                                                                        const int32_t* __restrict__ n_groups,
+                                                                        const int32_t* __restrict__ ent_tok,
+                                                                        const block_q8_1* __restrict__ xq,
+                                                                        NativeExpertLayout L, float* __restrict__ hf) {
+    using S = Split<TG>;
+    const int g = blockIdx.y;
+    if (g >= *n_groups) return;
+    __shared__ __align__(16) uint32_t s_grid[S::grid_bytes / 4];
+    for (int i = threadIdx.x; i < S::grid_bytes / 4; i += blockDim.x) s_grid[i] = ((const uint32_t*) S::grid())[i];
+    __syncthreads();
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, c = blockIdx.x;
+    const int col = 32 * c + GUS_ROWS * warp + (lane >> 4), t = lane & 15;
+    const uint8_t* wg = (const uint8_t*) grp_ptr[g] + (size_t) col * L.gu_row;
+    const uint8_t* wu = wg + L.up_off;
+    const int n_ff = (int) L.n_ff;
+    const int e0 = grp_start[g], e1 = grp_start[g + 1];
+    for (int e = e0; e < e1; e += 2) {
+        float* h = hf + (size_t) e * n_ff + col;
+        if (e1 - e == 1) gu_h_pass<TG, 1>(wg, wu, xq, ent_tok + e, t, s_grid, h, n_ff);
+        else gu_h_pass<TG, 2>(wg, wu, xq, ent_tok + e, t, s_grid, h, n_ff);
+    }
+}
+
+// The plan's entries' h: 128 values a warp, signs and rotation in registers, each register a q8_1 block
+__global__ void __launch_bounds__(256) h_rotate_q8_1_kernel(const float* __restrict__ hf, block_q8_1* __restrict__ hq,
+                                                            const float* __restrict__ signs, float scale,
+                                                            const int32_t* __restrict__ grp_start,
+                                                            const int32_t* __restrict__ n_groups, int n_ff) {
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, parts = n_ff / 128;
+    const int i = blockIdx.x * 8 + warp, e = grp_start[0] + i / parts, b = i % parts;
+    if (e >= grp_start[*n_groups]) return;
+    const float* h = hf + (size_t) e * n_ff + b * 128;
+    float v[4];
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+        const int at = j * 32 + lane;
+        v[j] = signs != nullptr ? h[at] * signs[b * 128 + at] : h[at];
+    }
+    fwht128_warp(v, lane, scale);
+    block_q8_1* y = hq + (size_t) e * (n_ff / 32) + b * 4;
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+        float amax = fabsf(v[j]), sum = v[j];
+#pragma unroll
+        for (int o = 16; o > 0; o >>= 1) {
+            amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+            sum += __shfl_xor_sync(0xffffffffu, sum, o);
+        }
+        const float d = q8_1_finite(amax / 127.0f);
+        y[j].qs[lane] = q8_1_quant(v[j], d, amax);
+        if (lane == 0) y[j].ds = q8_1_ds(d, sum);
+    }
+}
+
+// hadamard_rows: a warp a row's 128 values
+template<typename T> __device__ __forceinline__ float had_ld(const T* p) { return *p; }
+template<> __device__ __forceinline__ float had_ld<__half>(const __half* p) { return __half2float(*p); }
+template<typename T> __device__ __forceinline__ void had_st(T* p, float v) { *p = v; }
+template<> __device__ __forceinline__ void had_st<__half>(__half* p, float v) { *p = __float2half(v); }
+template<typename T>
+__global__ void __launch_bounds__(256) hadamard_rows_kernel(const T* x, T* y, const float* __restrict__ signs, float scale,
+                                                            int64_t rows, int64_t width) {
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const int64_t i = (int64_t) blockIdx.x * 8 + warp, parts = width / 128, row = i / parts;
+    if (row >= rows) return;
+    const int b = (int) (i % parts);
+    const int64_t r0 = row * width + b * 128;
+    float v[4];
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+        const int at = j * 32 + lane;
+        v[j] = signs != nullptr ? had_ld<T>(x + r0 + at) * signs[b * 128 + at] : had_ld<T>(x + r0 + at);
+    }
+    fwht128_warp(v, lane, scale);
+#pragma unroll
+    for (int j = 0; j < 4; ++j) had_st<T>(y + r0 + j * 32 + lane, v[j]);
 }
 
 // The decoded-once kernels' formats: gate/up rows of 80 calls at n_embd 2560; down rows (n_ff 640) of IQ4_NL (40 calls,
@@ -844,9 +957,30 @@ __device__ void dq_iq1_s(const void* vx, int64_t ibs, dst_t* yy, int tid) {
     for (int j = 0; j < 8; ++j) y[j] = cvt<dst_t>(d * (q[j] + delta));
 }
 
+// TQP: one 256-value call = two 128-blocks; thread tid decodes block tid / 16, lane (tid >> 1) & 7, its steps 4 * half .. + 3
+// (8 values, 2 a step), through the fp16 codebook, what the fork's ggml reads the type as
+template<int K, typename dst_t>
+__device__ void dq_tqp(const void* vx, int64_t ibs, dst_t* yy, int tid) {
+    const int blk = tid >> 4, l = (tid >> 1) & 7, half = tid & 1;
+    const uint8_t* b = (const uint8_t*) vx + (size_t) (2 * ibs + blk) * (2 + 8 * K);
+    const float d = __half2float(__ushort_as_half(*(const uint16_t*) b));
+    uint32_t s[8];
+    tqp_states8<K>(b + 2, l, s);
+    dst_t* y = yy + blk * 128 + 16 * l + 8 * half;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        const uint32_t pa = ((const uint32_t*) tq_lut_f16)[(s[4 * half + i] * 0x9e3779b1u) >> 21];
+        y[2 * i + 0] = cvt<dst_t>(d * __half2float(__ushort_as_half((unsigned short) (pa & 0xFFFFu))));
+        y[2 * i + 1] = cvt<dst_t>(d * __half2float(__ushort_as_half((unsigned short) (pa >> 16))));
+    }
+}
+
 template<typename dst_t>
 __device__ __forceinline__ void dq_dispatch(int ty, const void* vx, int64_t ibs, dst_t* y, int tid) {
     switch (ty) {
+        case 147: dq_tqp<5>(vx, ibs, y, tid); break;
+        case 148: dq_tqp<6>(vx, ibs, y, tid); break;
+        case 149: dq_tqp<7>(vx, ibs, y, tid); break;
         case 16: dq_iq2_xxs(vx, ibs, y, tid); break;
         case 17: dq_iq2_xs(vx, ibs, y, tid); break;
         case 18: dq_iq3_xxs(vx, ibs, y, tid); break;
@@ -895,7 +1029,7 @@ __global__ void dequant_experts_kernel(int gu_ty, int d_ty, const uint8_t* const
 // the formats dq_dispatch dequantizes
 bool is_iq(int t) {
     return t == 16 || t == 17 || t == 18 || t == 20 || t == 21 || t == 22 || t == 23 || t == 29 || t == 42 || t == 11 ||
-           t == 12 || t == 13 || t == 14 || t == 19 || t == 7 || t == 8;
+           t == 12 || t == 13 || t == 14 || t == 19 || t == 7 || t == 8 || (t >= 147 && t <= 149);
 }
 
 }  // namespace
@@ -920,6 +1054,9 @@ size_t iq_row_bytes(int t, int64_t n) noexcept {
         case 19: return (size_t) (n / 256) * sizeof(block_iq1_s);
         case 7: return (size_t) (n / 32) * sizeof(block_q5_1);
         case 8: return (size_t) (n / 32) * sizeof(block_q8_0);
+        case 147: return (size_t) (n / 128) * sizeof(block_tqp5);
+        case 148: return (size_t) (n / 128) * sizeof(block_tqp6);
+        case 149: return (size_t) (n / 128) * sizeof(block_tqp7);
         default: return 0;
     }
 }
@@ -1094,11 +1231,43 @@ NativeExpertLayout native_expert_layout(int gu_type, int d_type, int64_t n_embd,
     return L;
 }
 
-size_t native_expert_scratch_bytes(int64_t cap, int64_t n_ff) {
+size_t native_expert_scratch_bytes(int64_t cap, int64_t n_ff, bool rotated) {
     const size_t q81 = (size_t) (n_ff / 32) * sizeof(block_q8_1);
     const size_t q80 = (size_t) (n_ff / 32) * 34;
     const size_t q8k = (size_t) (n_ff / 256) * 292;
-    return ((size_t) cap * (std::max)(q81, (std::max)(q80, q8k)) + 255) & ~(size_t) 255;
+    const size_t quant = ((size_t) cap * (std::max)(q81, (std::max)(q80, q8k)) + 255) & ~(size_t) 255;
+    return rotated ? quant + (size_t) cap * (size_t) n_ff * sizeof(float) : quant;   // the rotated layers' h in floats, after it
+}
+
+void hadamard_rows(const float* x, float* y, int64_t rows, int64_t width, const float* signs, void* stream) {
+    if (rows <= 0) return;
+    const unsigned blocks = (unsigned) ((rows * (width / 128) + 7) / 8);
+    hadamard_rows_kernel<float><<<blocks, 256, 0, (cudaStream_t) stream>>>(x, y, signs, 1.0f / std::sqrt(128.0f), rows, width);
+    check("hadamard_rows");
+}
+
+void hadamard_rows_f16(uint16_t* x, int64_t rows, int64_t width, const float* signs, void* stream) {
+    if (rows <= 0) return;
+    const unsigned blocks = (unsigned) ((rows * (width / 128) + 7) / 8);
+    hadamard_rows_kernel<__half><<<blocks, 256, 0, (cudaStream_t) stream>>>((const __half*) x, (__half*) x, signs,
+                                                                            1.0f / std::sqrt(128.0f), rows, width);
+    check("hadamard_rows_f16");
+}
+
+const float* hadamard_device_signs(const float* host, int width) {
+    if (host == nullptr || width <= 0) return nullptr;
+    static std::mutex mu;
+    static std::map<std::tuple<int, const float*, int>, float*> table;   // (device, host vector, width)
+    int dev = 0;
+    cudaGetDevice(&dev);
+    std::lock_guard<std::mutex> lock(mu);
+    float*& d = table[std::make_tuple(dev, host, width)];
+    if (d == nullptr && (cudaMalloc((void**) &d, (size_t) width * sizeof(float)) != cudaSuccess ||
+                         cudaMemcpy(d, host, (size_t) width * sizeof(float), cudaMemcpyHostToDevice) != cudaSuccess)) {
+        std::fprintf(stderr, "hadamard_device_signs: %s\n", cudaGetErrorString(cudaGetLastError()));
+        std::exit(1);
+    }
+    return d;
 }
 
 void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long* grp_ptr, const int32_t* grp_start,
@@ -1115,6 +1284,28 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     auto* hq = (block_q8_1*) scratch;
     const auto* X = (const block_q8_1*) x_q8_1;
     const dim3 ggu((unsigned) (L.n_ff / 32), (unsigned) cap_groups);
+    if (L.had_block > 0) {   // Hadamard-folded: the trellis formats, at the geometry their kernels take
+        if (L.had_block != 128 || L.n_embd != 2560 || L.n_ff != 640) {
+            std::fprintf(stderr, "native_expert_grouped: a rotation of %d over %lld x %lld\n", L.had_block, (long long) L.n_embd,
+                         (long long) L.n_ff);
+            std::exit(1);
+        }
+        auto* hf = (float*) ((uint8_t*) scratch + native_expert_scratch_bytes(cap_entries, L.n_ff));
+        const unsigned parts = (unsigned) (L.n_ff / 128);
+        const dim3 gs((unsigned) (L.n_embd / (DOWN_WARPS * 32 / 8)), (unsigned) cap_groups);
+#define LAMINA_GU_H(T) case T: native_gu_h_kernel<T><<<ggu, GUS_WARPS * 32, 0, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hf); break;
+        switch (L.gu_type) { LAMINA_TQP_FMTS(LAMINA_GU_H) default: std::fprintf(stderr, "native_expert_grouped: folded gate/up type %d\n", L.gu_type); std::exit(1); }
+#undef LAMINA_GU_H
+        check("native_expert_grouped/gu");
+        h_rotate_q8_1_kernel<<<(unsigned) (((size_t) cap_entries * parts + 7) / 8), 256, 0, s>>>(hf, hq, L.d_signs, 1.0f / std::sqrt(128.0f),
+                                                                                                grp_start, n_groups, (int) L.n_ff);
+        check("native_expert_grouped/rotate");
+#define LAMINA_DOWN_H(T) case T: native_down_sub_kernel<T, 8, 40><<<gs, DOWN_WARPS * 32, 0, s>>>(grp_ptr, grp_start, n_groups, ent_dst, hq, L, out); break;
+        switch (L.d_type) { LAMINA_TQP_FMTS(LAMINA_DOWN_H) default: std::fprintf(stderr, "native_expert_grouped: folded down type %d\n", L.d_type); std::exit(1); }
+#undef LAMINA_DOWN_H
+        check("native_expert_grouped/down");
+        return;
+    }
     if (L.gu_act == 15) {
         switch (L.gu_type) {
         case 12: native_gus_contract_kernel<12><<<ggu, GUS_WARPS * 32, 0, s>>>(grp_ptr, grp_start, n_groups, ent_tok,

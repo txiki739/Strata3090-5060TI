@@ -103,9 +103,9 @@ struct GpuPlanSink {
     int32_t* gpu2_list = nullptr;
     uint32_t* tier_flag[kMaxGpuTiers] = {};
     uint32_t ring = 0, tier_ring[kMaxGpuTiers] = {};
-    /// This token group's activations as the window's router wrote them (mapped): ggml's Q8_K rows, `xk_stride` bytes
-    /// apart, when the layer takes them (`pool_takes_q8k`), else null (the pool quantizes the floats); and the q8_1
-    /// rows (n_embd / 32 blocks each) the GPU tiers take.
+    /// This token group's activations as the window's router wrote them (mapped): the rows the pool takes, `xk_stride`
+    /// bytes apart, when it takes them so: ggml's Q8_K rows (`pool_takes_q8k`) or the q8_1 rows (`pool_takes_q8_1`), else
+    /// null (the pool quantizes the floats); and the q8_1 rows (n_embd / 32 blocks each) the GPU tiers take.
     const uint8_t* xk = nullptr;
     int64_t xk_stride = 0;
     const uint8_t* x1 = nullptr;
@@ -114,6 +114,8 @@ struct GpuPlanSink {
 /// Whether the pool takes a native layer's gate/up activation as ggml's Q8_K rows (`GpuPlanSink::xk`): its format's
 /// vec_dot_type (the i-quants', the K-quants'), and not the Q2_0 kernels' own.
 inline bool pool_takes_q8k(const lamina::kernels::cpu::NativeFmt& f) { return f.gu_type != 42 && f.gu_act == 15; }
+/// Whether it takes the q8_1 rows: a Hadamard-folded layer's, rotated on the GPU for its own experts.
+inline bool pool_takes_q8_1(const lamina::kernels::cpu::NativeFmt& f) { return f.had_gu; }
 
 /// The adapter's own state.  One per session, reused every layer so the token path allocates nothing (P2.T10).
 struct ExpertDispatch {

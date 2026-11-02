@@ -3,6 +3,8 @@
 // In order: the shards and their tensors' sizes, the expert table (native_experts.txt), then the index rows and
 // dense.bin's pieces with their conversions.
 #include "lamina/core/pack_image.hpp"
+#include "lamina/kernels/cpu/expert.hpp"
+#include "lamina/kernels/cpu/tq_cpu.hpp"
 
 #include "lamina/artifact/gguf_reader.hpp"
 #include "lamina/artifact/gguf_split.hpp"
@@ -64,6 +66,9 @@ std::string type_str(uint32_t t) {
         case 144: return "TQ2_T";
         case 145: return "TQK6";
         case 146: return "TQK7";
+        case 147: return "TQP5";
+        case 148: return "TQP6";
+        case 149: return "TQP7";
         default: return "type" + std::to_string(t);
     }
 }
@@ -83,6 +88,100 @@ bool ends_with(const std::string& s, const char* p) {
 
 /// is_expert: the routed experts, which native_experts.txt describes and the engine reads from the GGUF.
 bool is_expert(const std::string& name) { return starts_with(name, "blk.") && ends_with(name, "_exps.weight"); }
+
+/// prism.hadamard.*, what a Hadamard-folded file says of its experts (hadamard.hpp): into `h` (block 0 without the metadata), or
+/// false with the reason.  What this engine cannot apply is refused: a folded weight run unrotated computes plausible garbage.
+bool read_hadamard(const lamina::GgufFile& meta, int64_t n_layers, lamina::kernels::cpu::HadamardSpec& h, std::string& err) {
+    using lamina::MetaType;
+    const auto text = [&](const char* key) -> std::string {
+        const lamina::MetaValue* v = meta.get(key);
+        return v != nullptr && v->type == MetaType::STRING ? v->s : std::string();
+    };
+    const lamina::MetaValue* ver = meta.get("prism.hadamard.version");
+    if (ver == nullptr) return true;
+    if (ver->num() != 1.0) {
+        err = "prism.hadamard: an unknown version";
+        return false;
+    }
+    const lamina::MetaValue* blk = meta.get("prism.hadamard.block_size");
+    const int block = blk != nullptr ? (int) blk->num() : 0;
+    if (block != 128) {   // the kernels' registers and warps are cut for it
+        err = "prism.hadamard: a block of " + std::to_string(block) + " values; this engine rotates 128";
+        return false;
+    }
+    if (text("prism.hadamard.transform") != "normalized-sylvester-walsh-hadamard" ||
+        text("prism.hadamard.axis") != "input-last-dimension") {
+        err = "prism.hadamard: an unknown transform or axis";
+        return false;
+    }
+    if (meta.get("prism.hadamard.inverse_weight_names") != nullptr) {
+        err = "prism.hadamard: a rotated token embedding, which this engine does not read";
+        return false;
+    }
+    const std::string mode = text("prism.hadamard.sign_mode");
+    if (mode != "identity" && mode != "explicit") {
+        err = "prism.hadamard: an unknown sign mode";
+        return false;
+    }
+    const lamina::MetaValue* names = meta.get("prism.hadamard.weight_names");
+    if (names == nullptr || names->type != MetaType::ARRAY || names->items.size() != names->count || names->count == 0) {
+        err = "prism.hadamard: no list of folded weights";
+        return false;
+    }
+    h.roles.assign((size_t) n_layers, 0);
+    for (const lamina::MetaValue& n : names->items) {
+        static const struct { const char* suffix; uint8_t bit; } roles[] = {
+            {".ffn_gate_exps.weight", 1}, {".ffn_up_exps.weight", 2}, {".ffn_down_exps.weight", 4}};
+        uint8_t bit = 0;
+        for (const auto& r : roles)
+            if (ends_with(n.s, r.suffix)) bit = r.bit;
+        const int64_t l = starts_with(n.s, "blk.") ? std::atoll(n.s.c_str() + 4) : -1;
+        if (bit == 0 || l < 0 || l >= n_layers || (h.roles[(size_t) l] & bit) != 0) {
+            err = "prism.hadamard folds " + n.s + "; this engine rotates the routed experts' inputs only, once each";
+            return false;
+        }
+        h.roles[(size_t) l] |= bit;
+    }
+    for (int64_t l = 0; l < n_layers; ++l)
+        if (((h.roles[(size_t) l] & 1) != 0) != ((h.roles[(size_t) l] & 2) != 0)) {
+            err = "layer " + std::to_string(l) + ": prism.hadamard folds only one of gate and up, which share an input";
+            return false;
+        }
+    if (mode == "explicit") {
+        const lamina::MetaValue* sw = meta.get("prism.hadamard.sign_widths");
+        const lamina::MetaValue* sv = meta.get("prism.hadamard.sign_values");
+        if (sw == nullptr || sv == nullptr || sw->type != MetaType::ARRAY || sv->type != MetaType::ARRAY ||
+            sv->items.size() != sv->count) {
+            err = "prism.hadamard: no sign vectors";
+            return false;
+        }
+        uint64_t at = 0;
+        for (const lamina::MetaValue& w : sw->items) {
+            const uint64_t width = w.u;
+            if (width == 0 || width % (uint64_t) block != 0 || at + width > sv->count || h.signs.count((int) width) != 0) {
+                err = "prism.hadamard: sign widths and values that do not fit";
+                return false;
+            }
+            std::vector<float>& v = h.signs[(int) width];
+            v.resize((size_t) width);
+            for (uint64_t i = 0; i < width; ++i) {
+                const int64_t s = (int64_t) sv->items[(size_t) (at + i)].u;
+                if (s != 1 && s != -1) {
+                    err = "prism.hadamard: a sign that is not +1 or -1";
+                    return false;
+                }
+                v[(size_t) i] = (float) s;
+            }
+            at += width;
+        }
+        if (at != sv->count) {
+            err = "prism.hadamard: sign widths and values that do not fit";
+            return false;
+        }
+    }
+    h.block = block;
+    return true;
+}
 
 /// FORM: the float form the engine reads a pack tensor in (name without `blk.N.`); -1 = none, served from the
 /// GGUF when quantized, written as stored when a float.
@@ -374,6 +473,13 @@ bool PackImage::build(const std::string& gguf_first_shard, PackImage& out, std::
                 err = "layer " + std::to_string(l) + ": NVFP4 experts, which this engine has no GPU kernels for";
                 return false;
             }
+            // a format past ggml's own only where the engine has kernels: its trellis types
+            for (int r = 0; r < 3; ++r)
+                if (ts[r]->type > 42 && !lamina::kernels::cpu::tq_supported((int) ts[r]->type)) {
+                    err = "layer " + std::to_string(l) + ": experts in " + type_str(ts[r]->type) +
+                          ", a type this engine has no kernels for";
+                    return false;
+                }
             const uint64_t blob = per[0] + per[1] + per[2];
             lines += std::to_string(l) + " " + std::to_string(ts[0]->type) + " " + std::to_string(ts[2]->type) + " " +
                      std::to_string(total) + " " + std::to_string(blob) + "\n";
@@ -382,10 +488,22 @@ bool PackImage::build(const std::string& gguf_first_shard, PackImage& out, std::
         img.experts_ = "# lamina native experts v3: layer gu_type d_type offset blob_bytes (n_expert " +
                        std::to_string(n_expert) + ", total " + std::to_string(total) + "; the engine takes the "
                        "experts from " + img.source_ + " by tensor name)\n" + lines;
-        // prism.hadamard: experts folded with a Hadamard rotation, which this engine does not run
-        if (model.meta().get("prism.hadamard.version") != nullptr) {
-            err = "prism.hadamard: the experts are Hadamard-folded (native_experts.txt v5), which this engine does "
-                  "not run";
+        if (!read_hadamard(model.meta(), n_layers, img.hadamard_, err)) return false;
+        // the kernels: trellis experts rotated, and only they
+        for (int64_t l = 0; l < n_layers; ++l) {
+            const uint32_t gt = model.find("blk." + std::to_string(l) + ".ffn_gate_exps.weight")->type;
+            const uint32_t dt = model.find("blk." + std::to_string(l) + ".ffn_down_exps.weight")->type;
+            const bool tg = lamina::kernels::cpu::tq_supported((int) gt), td = lamina::kernels::cpu::tq_supported((int) dt);
+            if (tg != img.hadamard_.gu(l) || td != img.hadamard_.down(l)) {
+                err = "layer " + std::to_string(l) + ": " + type_str(gt) + " / " + type_str(dt) + " experts" +
+                      (img.hadamard_.any() ? " folded otherwise than their formats" : " without prism.hadamard's rotation") +
+                      "; this engine rotates the trellis formats, and only them";
+                return false;
+            }
+        }
+        if (img.hadamard_.any() && (img.hadamard_.signs.count((int) lamina::kernels::cpu::H) == 0 ||
+                                    img.hadamard_.signs.count((int) lamina::kernels::cpu::FF) == 0)) {
+            err = "prism.hadamard: this engine's rotation takes sign vectors of the experts' widths";
             return false;
         }
 
