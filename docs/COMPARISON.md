@@ -27,6 +27,9 @@ measurements.
   other: UD-Q4_K_XL 2.2-3.4x as far as those backends are apart (KL), from llama.cpp's 8-bit rounding of the file's
   Q8_0 hyper-connection weights; IQ3_S with the 4-bit V cache its config runs (k8v4) 1.5-4.5x (with 8-bit KV
   0.8-1.4x).
+- [Gyro-L](#gyro-l-and-the-three-files-at-one-build), Agention's trellis file in Huihui's abliterated build, which Lamina runs on every
+  path: on fixed text at one build it generates 10-20% slower than IQ3_S and 9-31% faster than UD-Q4_K_XL, reads long prompts
+  within 3% of both, and takes IQ3_S's RAM. On human text, in Lamina, it stands closer to UD-Q4_K_XL than IQ3_S does.
 - [Qwen3.6-35B-A3B](#qwen36-35b-a3b), its layers split over both GPUs: generation 1-9% faster than llama.cpp's with
   both GPUs, long prompts 2-8% slower. [Qwen3.8-27B](#qwen38-27b) (UD-Q6_K_M, the full context on both GPUs): Lamina writes code 29%
   faster than llama.cpp, thinks 48% faster, edits 23% faster and reads prompts 4-13% faster.
@@ -132,6 +135,50 @@ memory.
 | RAM taken (GB) | 84 | 69 | 69 | 81 | 80 |
 <!-- /matrix:api-ud-q4_k_xl -->
 
+### Gyro-L, and the three files at one build
+
+Agention's Gyro-L in Huihui's abliterated build: 108 GB in one file, experts 45.1 GiB of pair-trellis types (TQP5, TQP6, TQP7) in a
+block-Hadamard basis, dense tensors in Q8_0, a 54 GB Q8_0 n-gram table. Mainline llama.cpp cannot read it (Agention's fork can). The
+same requests as above on 2026-11-02, at one build (33f63cf1) with the development PC's configs and all three GPUs, the RTX 5060 Ti a
+third tier, one run each. The other tables' Lamina columns were measured with two GPUs at an older build. Gyro-L's config has K and
+V in 8 bits and the default head split, without `--prompt-shift`, and reads through the file cache: 9,040 slots on the 3090 while the
+context is short, 6,815 on the 5070 Ti, 7,776 on the 5060 Ti.
+
+<!-- matrix:api-files -->
+| | Gyro-L | IQ3_S | UD-Q4_K_XL |
+|---|---|---|---|
+| Prompt, 16K tokens (t/s) | 3082 | 3113 | 3158 |
+| Prompt, 32K tokens (t/s) | 4173 | 4318 | 4364 |
+| Prompt, 64K tokens (t/s) | 5218 | 5390 | 5255 |
+| Prompt, 128K tokens (t/s) | 5551 | 5607 | 5661 |
+| Generation: code, 28-token prompt (t/s) | 179.6 | 205.3 | 147.3 |
+| Generation: thinking, 3,000 tokens | 126.9 | 150.8 | 123.6 |
+| Generation: edit, the prompt's file returned (2.4K tokens) | 245.0 | 321.8 | 210.0 |
+| Generation after the 16K prompt | 147.2 | 180.9 | 148.6 |
+| Generation after the 32K prompt | 147.1 | 187.2 | 146.5 |
+| Generation after the 64K prompt | 129.3 | 157.3 | 128.0 |
+| Generation after the 128K prompt | 115.4 | 151.2 | 118.4 |
+| Follow-up turn after the 16K prompt: new tokens, prompt time | 34 in 0.13 s | 34 in 0.11 s | 34 in 0.14 s |
+| Start to the API, the model file cached (s) | 28 | 19 | 31 |
+| VRAM taken: 3090 / 5070 Ti / 5060 Ti (GiB) | 22.6 / 13.4 / 14.4 | 22.5 / 13.4 / 14.4 | 22.7 / 13.4 / 14.4 |
+| RAM taken (GB) | 53 | 54 | 82 |
+<!-- /matrix:api-files -->
+
+Generation on fixed text, the same build, two runs averaged:
+
+<!-- matrix:fixed-files -->
+| Text | Gyro-L t/s (tokens a pass) | IQ3_S t/s (tokens a pass) | UD-Q4_K_XL t/s (tokens a pass) |
+|---|---|---|---|
+| code (400 tokens) | 194.1 (4.10) | 221.7 (4.08) | 148.5 (3.82) |
+| thinking (1,200) | 136.4 (2.25) | 166.0 (2.40) | 125.1 (2.03) |
+| after the 16K prompt (400) | 155.8 (3.02) | 172.8 (2.90) | 134.9 (2.86) |
+| edit (2,397) | 259.7 (7.54) | 324.0 (7.54) | 206.6 (7.54) |
+<!-- /matrix:fixed-files -->
+
+Gyro-L's experts cost more to decode than IQ3_S's, on as many bytes (a dot of 16 weights instead of 32, each state hashed into a codebook
+in shared memory: T1 44-59 against 37 us, T8 197-236 against 139-153 on the 3090), its dense tensors and head are Q8_0, and its
+input and h are rotated once a layer. Its prompts come close to the others' because the prompt path's products cost the formats alike.
+
 ## Sampled generation
 
 Lamina's configs sample the requests that send no sampling settings: temperature 0.7, top_p 0.95, top_k 20, min_p
@@ -192,13 +239,26 @@ four-token windows. Any change of rounding moves 2-4% of the thinking text's arg
 | Lamina, one-token vs four-token windows | 99.6%, 1.4e-04 | 97.9%, 2.1e-03 | 98.0%, 5.5e-04 |
 <!-- /matrix:parity -->
 
-## The two files
+## The files
 
 llama.cpp's perplexity (build 11116, 2026-09-30) over 28 chunks of 4,096 tokens of llama.cpp's own docs, C++ and
 Python sources (lower is better): UD-Q4_K_XL 1.8849, IQ3_S 1.8946 (+0.5%), and ISTA-DASLab's IQ3_XXS, which IQ3_S
 replaced in Lamina's configs, 1.9215 (+1.9%). IQ3_S's experts take 46.8 GiB, UD-Q4_K_XL's 71.7: on this PC IQ3_S
 generates 30-68% faster on fixed text; with both GPUs it reads prompts 8% slower to 4% faster, on the 3090 alone
 1.45-1.54x as fast.
+
+Each file against UD-Q4_K_XL in Lamina itself, along fixed human text (each position's 64 likeliest tokens, deterministic, a target
+below them taking the 64th's log-probability), argmax agreement, KL and the text's perplexity:
+
+| Text | IQ3_S | Gyro-L, abliterated |
+|---|---|---|
+| Code, docs, English, mixed languages, an agent's session (4,960 tokens) | 87.0%, 0.145, x1.006 (90% interval spans 1) | 87.9%, 0.120, x0.977 (spans 1) |
+| Wikipedia in Polish, Finnish, Czech, Hungarian, Turkish, Ukrainian, Korean (6,944) | 88.6%, 0.101, x1.026 | 90.3%, 0.078, x1.018 |
+
+Gyro-L's lead on the first row's perplexity comes from the agent's session alone (x0.864); on the other four texts it stands at
+x0.986-1.021. These are distances from another quantization, not from the original weights, and the abliterated build differs from
+its base by design: Agention's own table against Q8_0 (another corpus) gives UD-Q4_K_XL 0.078, Gyro-L 0.146 and its abliterated build
+0.164.
 
 ## Qwen3.6-35B-A3B
 
@@ -267,7 +327,7 @@ the thinking task and the edit, 348 on the code request (where a near-tie parts 
 
 | | llama.cpp | Strata | Lamina |
 |---|---|---|---|
-| Model files | any GGUF of the model | ISTA-DASLab's GSQ-RCO sizes (Q2_0 to IQ3_S), their Coder, Swift 1.5 (i-quant and Q2_0 experts); unsloth's UD-Q4_K_XL and UD-IQ4_XS | ISTA-DASLab's IQ3_S and unsloth's UD-Q4_K_XL through its setup; the engine runs every quant of unsloth's too (K-quant, Q5_1 and Q8_0 experts) |
+| Model files | any GGUF of the model | ISTA-DASLab's GSQ-RCO sizes (Q2_0 to IQ3_S), their Coder, Swift 1.5 (i-quant and Q2_0 experts); unsloth's UD-Q4_K_XL and UD-IQ4_XS | ISTA-DASLab's IQ3_S and unsloth's UD-Q4_K_XL through its setup; the engine runs every quant of unsloth's too (K-quant, Q5_1 and Q8_0 experts) and Agention's Gyro-L (trellis experts in a Hadamard basis) |
 | Speculative decoding | none: no graph for this model's MTP layer | the MTP layer's drafts, up to 3 a pass; prompt lookup (up to 5 tokens where it pays) | the MTP layer's drafts; prompt lookup (up to 7 tokens after a 16+-token match) |
 | Several GPUs | a layer or row split | a layer split, each card holding its layers' experts; helper expert caches on up to three more cards (experimental) | up to three more cards as expert tiers, each its share of every layer; the first also the next layer's likely experts copied ahead, the prompt's experts the main card lacks and part of the output head; prompts of several chunks in two stages, one on each card |
 | Experts in VRAM | a fixed placement | ranked by use, updated every 4 verify passes | ranked by use on every card, updated every pass |
