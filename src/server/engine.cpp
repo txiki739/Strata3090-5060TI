@@ -512,6 +512,7 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
             if (got == 0) continue;
             if (got < 0 || starts_with(l, "ERR")) break;
             note_line(l);
+            if (starts_with(l, "CACHE ")) cache_line(l);   // the card keeps the state a stopped request left
             if (starts_with(l, "T ")) {
                 sent.push_back((int32_t) std::atoi(l.c_str() + 2));
                 drained.push_back(sent.back());

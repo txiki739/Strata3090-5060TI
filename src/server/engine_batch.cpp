@@ -334,6 +334,7 @@ std::string LaminaEngine::drain_control(const std::string& until, int born, doub
         if (got == 0) continue;
         if (got < 0) return "";
         if (starts_with(line, "DONE")) parse_done(line);
+        if (starts_with(line, "CACHE ")) cache_line(line);   // the card keeps the state a left-early request left
         if (starts_with(line, until) || starts_with(line, "ERR")) return line;
     }
     return "";
