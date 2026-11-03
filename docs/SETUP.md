@@ -24,7 +24,7 @@ Without `--model`, setup builds the engine only.
 | --- | --- |
 | `--check` | say what this PC has (GPUs, RAM, disk, the tools) and what the model needs; change nothing |
 | `--data-dir DIR` | where the model files go (default `../Lamina-data`, beside the clone) |
-| `--vision on\|off\|gpu[:GPU]` | pictures (default on; the image encoder runs on the CPU). `gpu` builds it with CUDA (`build-vision-cuda`) and runs it on a GPU: the one named (name, UUID or nvidia-smi index), else the one with the least VRAM besides the main GPU; it takes ~1.3 GB there |
+| `--vision on\|off\|gpu[:GPU]` | pictures (default on; the image encoder runs on the CPU). `gpu` builds it with CUDA (`build-vision-cuda`) and runs it on a GPU: the one named (name, UUID or nvidia-smi index), else the one with the least VRAM besides the main GPU, of those that drive no display if any; it takes ~1.3 GB there |
 | `--main-gpu GPU` | the GPU the model runs on (default: the one with the most VRAM that drives no display) |
 | `--context N` | the context in tokens (default: the example config's) |
 | `--port N` | the server's port (default 8081 to 8084 by model) |

@@ -248,13 +248,15 @@ def pick_main(usable: list) -> Gpu:
 
 
 def pick_vision_gpu(spec: str | None, usable: list, main: Gpu | None) -> Gpu | None:
-    """The GPU of --vision gpu[:GPU]: the one named (its name, UUID or nvidia-smi index), else the one with the least
-    VRAM besides the model's main GPU (where the encoder's ~1.3 GB of experts matter least), else the main GPU. None
-    when the name matches no GPU."""
+    """The GPU of --vision gpu[:GPU]: the one named (its name, UUID or nvidia-smi index), else, besides the model's
+    main GPU, the one with the least VRAM (where the encoder's ~1.3 GB of experts matter least) among those driving no
+    display, as for the main GPU (the engine leaves a desktop's card a larger reserve), else among all of them, else
+    the main GPU. None when the name matches no GPU."""
     if spec:
         return next((g for g in usable if spec in (g.name, g.uuid, str(g.index))), None) or \
             next((g for g in usable if spec.lower() in g.name.lower()), None)
-    pool = [g for g in usable if main is None or g.index != main.index] or usable
+    others = [g for g in usable if main is None or g.index != main.index] or usable
+    pool = [g for g in others if not g.display] or others
     return min(pool, key=lambda g: (g.mem_mib, -g.index)) if pool else None
 
 
@@ -695,7 +697,8 @@ def main() -> int:
                     help="the models, the draft layer and the image projector (default: Lamina-data beside this checkout)")
     ap.add_argument("--vision", default="on", metavar="on|off|gpu[:GPU]",
                     help="pictures: on (the encoder runs on the CPU), off, or gpu (built with CUDA and run on a GPU: its "
-                         "name, UUID or nvidia-smi index; default the one with the least VRAM besides the main GPU)")
+                         "name, UUID or nvidia-smi index; default the one with the least VRAM besides the main GPU, "
+                         "of those that drive no display if any)")
     ap.add_argument("--main-gpu", help="the GPU the model runs on: its name, UUID or nvidia-smi index (default: the one "
                                        "with the most VRAM that drives no display)")
     ap.add_argument("--context", type=int, help="the context in tokens (default: the example config's)")

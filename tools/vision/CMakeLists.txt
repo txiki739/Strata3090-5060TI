@@ -7,8 +7,10 @@
 #
 # Portable (AVX2 baseline) is the default, so an encoder built without extra flags runs on any AVX2 PC: the 0.1.32
 # release's encoder was built native on an AVX-512 machine and stopped with an illegal instruction elsewhere
-# (#411 #412 #419).  setup.py, which builds for the PC it runs on, passes -DLAMINA_PORTABLE=OFF.  The option is
-# kept in CMakeCache.txt, so a build folder configured before this default still needs the flag (or a fresh folder).
+# (#411 #412 #419).  setup.py builds it portable too, into build-vision (the CPU encoder: a native build on an
+# AVX-512 CPU runs without flash attention, about half as fast) or, with --vision gpu, with CUDA for the PC's GPUs into
+# build-vision-cuda.  The option is kept in CMakeCache.txt, so a build folder configured before this default still
+# needs the flag (or a fresh folder).
 cmake_minimum_required(VERSION 3.21)
 project(lamina_vision C CXX)
 

@@ -48,6 +48,15 @@ class PickVisionGpu(unittest.TestCase):
     def test_default_on_one_gpu_is_that_gpu(self):
         self.assertEqual(setup.pick_vision_gpu(None, [MAIN], MAIN), MAIN)
 
+    def test_default_passes_over_the_desktops_card(self):
+        # the development PC: the 5070 Ti drives the desktop and has 8 MiB less than the 5060 Ti
+        desk = setup.Gpu(0, "NVIDIA GeForce RTX 5070 Ti", "GPU-dddd", 16303, 120, True)
+        tier = setup.Gpu(1, "NVIDIA GeForce RTX 5060 Ti", "GPU-eeee", 16311, 120, False)
+        main = setup.Gpu(2, "NVIDIA GeForce RTX 3090", "GPU-ffff", 24576, 86, False)
+        self.assertEqual(setup.pick_vision_gpu(None, [desk, tier, main], main), tier)
+        self.assertEqual(setup.pick_vision_gpu(None, [desk, main], main), desk)   # the only other one
+        self.assertEqual(setup.pick_vision_gpu("0", [desk, tier, main], main), desk)   # when asked for
+
 
 class VisionSection(unittest.TestCase):
     EXAMPLE = {"exe": "./build-vision/bin/lamina-vision", "mmproj": "m.gguf", "model": "x.gguf", "gpu": False,
