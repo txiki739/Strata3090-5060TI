@@ -489,7 +489,7 @@ def gpu_info_local() -> dict:
             gpus.append({"name": p[0], "vram_mib": int(float(p[1])) if p[1].replace(".", "").isdigit() else None, "driver": p[2]})
     info = {"gpus": gpus}
     head = run_cmd(["nvidia-smi"])
-    m = re.search(r"CUDA Version:\s*([\d.]+)", head)
+    m = re.search(r"CUDA (?:UMD )?Version:\s*([\d.]+)", head)   # driver 621's nvidia-smi: "CUDA UMD Version"
     if m:
         info["cuda"] = m.group(1)
     if not gpus:
@@ -594,22 +594,27 @@ def collect_machine(base: str, key: str, cfg: dict | None, gpu_arg: str | None =
     eng = metrics.get("engine") or {}
     local = gpu_info_local()
     view = config_view(cfg) if cfg else {}
-    # #1985: only the GPUs the engine uses - the config's / --gpu selection; with none given the engine runs on one card
-    # (the one the server reports), not on every card the PC has
+    # #1985: only the GPUs the engine uses - the config's / --gpu selection, else the cards the server names (" + "
+    # between them: the main GPU, then those of --second-gpu), each matched to one of nvidia-smi's; not every card the
+    # PC has
+    served = [n for n in (static.get("gpu_name") or "").split(" + ") if n and n != "?"]
     used = local["gpus"]
     sel = gpu_selection(cfg, gpu_arg)
     if sel:
         used = [local["gpus"][i] for i in sel if 0 <= i < len(local["gpus"])] or used
     elif len(used) > 1 and static.get("gpu_name"):
-        named = [g for g in used if g["name"] == static["gpu_name"]]
-        used = named[:1] or used[:1]
+        pool, named = list(used), []
+        for n in served:
+            g = next((g for g in pool if g["name"] == n), None)
+            if g is not None:
+                pool.remove(g)
+                named.append(g)
+        used = named or used[:1]
     gpu_names = [g["name"] for g in used] or ([static["gpu_name"]] if static.get("gpu_name") else [])
     m = status.get("machine") or {}
     vram_mib = (m.get("gpu") or {}).get("total_mib") or None
-    # #2001: the server names the cards it reads (" + " between them).  A name nvidia-smi does not list means the
-    # engine runs on another vendor's card (an Intel Arc beside a GeForce): the server's names are the right ones, and
-    # so is its VRAM total - the PC's NVIDIA cards were not used.
-    served = [n for n in (static.get("gpu_name") or "").split(" + ") if n and n != "?"]
+    # #2001: a name nvidia-smi does not list means the engine runs on another vendor's card (an Intel Arc beside a
+    # GeForce): the server's names are the right ones, and so is its VRAM total - the PC's NVIDIA cards were not used.
     if served and not all(n in {g["name"] for g in local["gpus"]} for n in served):
         gpu_names, used = served, []
         local = {**local, "cuda": None}            # the PC's CUDA belongs to cards the engine did not use

@@ -278,6 +278,19 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(B.gpu_selection({"gpu": "0,2"}), [0, 2])
         self.assertEqual(B.gpu_selection({}, None), [])
 
+    def test_every_card_the_server_names(self):
+        """The engine on the cards of --main-gpu and --second-gpu: the report names them all, the main GPU first, with
+        their VRAM (it named nvidia-smi's first card alone)."""
+        a, b = "NVIDIA GeForce RTX 5070 Ti", "NVIDIA GeForce RTX 3090"
+        pc = {"gpus": [{"name": a, "vram_mib": 16303, "driver": "621.01"}, {"name": b, "vram_mib": 24576, "driver": "621.01"},
+                       {"name": b, "vram_mib": 24576, "driver": "621.01"}]}
+        for served, names, vram in ((f"{b} + {a} + {b}", [b, a, b], 65455), (f"{b} + {b}", [b, b], 49152), (b, [b], 24576)):
+            with mock.patch.object(B, "gpu_info_local", return_value=pc), mock.patch.object(
+                    B, "try_json", side_effect=lambda base, path, *x, s=served, **k: (
+                        {"hardware_static": {"gpu_name": s}} if path == "/metrics" else {})):
+                m = B.collect_machine("http://127.0.0.1:9", "", {"args": ["--main-gpu", "1", "--second-gpu", "auto"]})
+            self.assertEqual((m["gpu"], m["gpu_vram_mib"]), (names, vram))
+
     def test_the_slug_names_mixed_cards_one_by_one(self):
         """#2062: two different cards are not N copies of the first."""
         a, b = "NVIDIA GeForce RTX 5070 Ti", "NVIDIA RTX A4000"
@@ -354,6 +367,16 @@ class ReportTests(unittest.TestCase):
 
     def test_no_server_is_an_error_not_a_crash(self):
         self.assertEqual(B.main(["--url", "http://127.0.0.1:9", "--quiet"]), 2)
+
+
+class LocalGpuTests(unittest.TestCase):
+    def test_the_cuda_version_of_both_nvidia_smi_headers(self):
+        """Driver 621's nvidia-smi heads its table with "CUDA UMD Version", earlier ones with "CUDA Version"."""
+        for head in ("| NVIDIA-SMI 576.40   Driver Version: 576.40   CUDA Version: 12.9     |",
+                     "| NVIDIA-SMI 621.01   KMD Version: 621.01   CUDA UMD Version: 13.5     |"):
+            with mock.patch.object(B, "run_cmd", side_effect=lambda cmd, *x, h=head, **k: (
+                    "NVIDIA GeForce RTX 3090, 24576, 621.01\n" if any("--query-gpu" in c for c in cmd) else h)):
+                self.assertEqual(B.gpu_info_local()["cuda"], head.split("Version: ")[-1].split()[0])
 
 
 if __name__ == "__main__":
