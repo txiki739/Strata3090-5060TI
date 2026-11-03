@@ -467,13 +467,15 @@ bool parse_i64_list(const char* s, std::vector<int64_t>& out, std::string& err) 
 /// context for the whole process, and the destructors run on it can hang until the server's watchdog.  An
 /// out-of-memory (a window's graph that did not fit) poisons nothing: it is taken off the thread and the engine ends
 /// the ordinary way, so the request's ERR reaches the client and the next request starts the engine again (#37).
-/// A sticky error stays after cudaGetLastError(), and still leaves at once.
+/// cudaGetLastError() clears a sticky fault from the thread too, and one of work queued before the out-of-memory can
+/// land unseen: cudaMemGetInfo asks the context, without waiting for its queued work, and a fault still leaves at once.
 void exit_on_cuda_fault() {
     const cudaError_t e = cudaPeekAtLastError();
     if (e == cudaSuccess) return;
     if (e == cudaErrorMemoryAllocation) {
         (void) cudaGetLastError();
-        if (cudaPeekAtLastError() == cudaSuccess) return;
+        size_t free_b = 0, total_b = 0;
+        if (cudaMemGetInfo(&free_b, &total_b) == cudaSuccess) return;
     }
     std::fflush(stderr);
     std::_Exit(1);
