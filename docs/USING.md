@@ -215,8 +215,10 @@ URLs or local file paths) go through the image encoder, `lamina-vision`, and rea
 (the `vision` section's `max_tokens`; a 640x480 photo is ~300). JPEG, PNG, BMP and GIF are read as they are; WebP,
 TIFF, AVIF and others are converted to PNG first. The encoder runs on the CPU (the `vision` section's `threads`), so
 the GPUs keep their VRAM for experts: on the development PC's 8-core Ryzen 7 9700X a picture of ~1,000 tokens takes
-~9 s, once per picture (a picture sent again, as chat apps do every turn, is not encoded again). `--offline` refuses
-URLs. Qwen3.6-35B-A3B and Qwen3.8-27B read pictures with their repositories' own projectors.
+~9 s, once per picture (a picture sent again, as chat apps do every turn, is not encoded again). Set up with
+`--vision gpu`, it runs on a GPU instead (the section's `gpu` and `cuda_device`): on a PC with three cards, an RTX 5060
+Ti as the last expert tier gave ~1.3 GB of its experts to it and read a picture of ~1,000 tokens in ~1.9 s instead of
+~8.3 s on the CPU. `--offline` refuses URLs. Qwen3.6-35B-A3B and Qwen3.8-27B read pictures with their repositories' own projectors.
 
 ## Image generation
 
