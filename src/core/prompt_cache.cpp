@@ -12,10 +12,17 @@
 
 namespace lamina::core {
 
+namespace {
+
+/// A prompt that leaves the live sequence this many cells before its end, and more than it keeps, parks the rest.
+constexpr int64_t kParkDropped = 1024;
+
+}  // namespace
+
 PromptCache::PromptCache(const ModelGeometry& g, SessionState& ss, std::vector<QsaState*> kv, void* stream,
-                         int chain_cap, uint64_t park_budget, size_t park_slots, int64_t min_tokens, bool spread)
-    : g_(g), ss_(ss), kv_(std::move(kv)), stream_(stream), chain_cap_(chain_cap), spread_(spread),
-      ckpt_bytes_(session_ckpt_bytes(g)), parked_(park_budget, park_slots, min_tokens, ckpt_bytes_) {}
+                         int chain_cap, uint64_t park_budget, size_t park_slots, int64_t min_tokens)
+    : g_(g), ss_(ss), kv_(std::move(kv)), stream_(stream), chain_cap_(chain_cap), ckpt_bytes_(session_ckpt_bytes(g)),
+      parked_(park_budget, park_slots, min_tokens, ckpt_bytes_) {}
 
 PromptCache::~PromptCache() {
     for (const auto& [p, pinned] : owned_) {
@@ -30,11 +37,15 @@ void* PromptCache::take_buffer() {
         free_.pop_back();
         return h;
     }
+    // Pinned for the live chain and its end; past that pageable: slower copies, same result.  Pinned memory is the
+    // expert arena's too, and near the driver's limit even a pageable copy can fail.
     void* h = nullptr;
-    const bool pinned = cudaMallocHost(&h, (size_t) ckpt_bytes_) == cudaSuccess;
-    if (!pinned) {
+    const bool pinned = pinned_ <= chain_cap_ && cudaMallocHost(&h, (size_t) ckpt_bytes_) == cudaSuccess;
+    if (pinned) {
+        ++pinned_;
+    } else {
         (void) cudaGetLastError();
-        h = (void*) std::malloc((size_t) ckpt_bytes_);   // pageable: slower copies, same result
+        h = std::malloc((size_t) ckpt_bytes_);
     }
     if (h != nullptr) owned_.emplace_back(h, pinned);
     return h;
@@ -42,32 +53,6 @@ void* PromptCache::take_buffer() {
 
 void PromptCache::give_back(void* h) {
     if (h != nullptr) free_.push_back(h);
-}
-
-void PromptCache::free_ckpts(Seq& seq) {
-    for (const Ckpt& c : seq.ckpts) give_back(c.host);
-    seq.ckpts.clear();
-}
-
-void PromptCache::enforce_cap(Seq& seq) {
-    while ((int64_t) seq.ckpts.size() > chain_cap_) {
-        const size_t n = seq.ckpts.size();
-        std::vector<int64_t> lens(n);
-        std::vector<uint64_t> stamps(n);
-        std::unique_ptr<bool[]> tail(new bool[n]), pinned(new bool[n]);
-        for (size_t i = 0; i < n; ++i) {
-            lens[i] = seq.ckpts[i].pos;
-            stamps[i] = seq.ckpts[i].stamp;
-            tail[i] = seq.ckpts[i].tail;
-            pinned[i] = seq.ckpts[i].pos == seq.pin;
-        }
-        const size_t v = spread_ ? conv_cache::spread_victim(lens.data(), stamps.data(), n, chain_cap_, tail.get(),
-                                                             pinned.get())
-                                 : conv_cache::eviction_victim(stamps.data(), n, chain_cap_, tail.get(),
-                                                               pinned.get());
-        give_back(seq.ckpts[v].host);
-        seq.ckpts.erase(seq.ckpts.begin() + (ptrdiff_t) v);
-    }
 }
 
 void PromptCache::release(Seq& seq, int64_t keep_upto) {
@@ -79,6 +64,31 @@ void PromptCache::release(Seq& seq, int64_t keep_upto) {
             ++i;
         }
     }
+}
+
+void PromptCache::enforce_cap(Seq& seq) {
+    std::vector<int64_t> pos;
+    while ((int64_t) seq.ckpts.size() > chain_cap_) {
+        pos.clear();
+        for (const Ckpt& c : seq.ckpts) pos.push_back(c.pos);
+        const size_t v = chain_victim(pos.data(), pos.size());
+        give_back(seq.ckpts[v].host);
+        seq.ckpts.erase(seq.ckpts.begin() + (ptrdiff_t) v);
+    }
+}
+
+void* PromptCache::save(int64_t pos) {
+    void* h = take_buffer();
+    if (h == nullptr) return nullptr;
+    cudaDeviceSynchronize();
+    const bool split = split_from > 0 && split_save;
+    if (!(split ? session_ckpt_save_layers(ss_, g_, pos, h, stream_, 0, split_from, 0)
+                : session_ckpt_save(ss_, g_, pos, h, stream_))) {
+        give_back(h);
+        return nullptr;
+    }
+    if (split) split_save(pos, h);
+    return h;
 }
 
 std::vector<PromptCache::Part> PromptCache::kv_parts(int64_t cells) const {
@@ -112,21 +122,22 @@ bool PromptCache::kv_copy(int64_t cells, int64_t held, uint8_t* host, bool to_ho
 
 void PromptCache::stash_live(int64_t keep_upto) {
     const int64_t L = (int64_t) live_.tokens.size();
-    if (!enabled() || !parked_.wants(L)) return;
+    if (!parked_.wants(L)) return;
     if (ensure_kv && !ensure_kv(L)) return;
     uint64_t bytes = 0;
     for (const Part& p : kv_parts(L)) bytes += p.bytes;
-    checkpoint(L);   // the end state: the session is still at L
-    // What the parked conversation carries: its K/V copy and the chain after `keep_upto`.
-    uint64_t incoming = bytes;
-    for (const Ckpt& c : live_.ckpts)
-        if (c.pos > keep_upto) incoming += ckpt_bytes_;
+    // its chain: the checkpoints after `keep_upto` and one at its end, capped
+    const bool has_end = live_.find(L) != nullptr;
+    int64_t chain = has_end ? 0 : 1;
+    for (const Ckpt& c : live_.ckpts) chain += c.pos > keep_upto;
     std::vector<Seq> evicted;
-    if (!parked_.make_room(incoming, evicted)) return;   // parks nothing: the live one keeps going unsaved
-    for (Seq& s : evicted) {   // whole conversations left to pay for this one: their buffers are recycled
-        std::fprintf(stderr, "lamina serve: prompt cache: parked conversation %zu cells evicted\n", s.tokens.size());
-        free_ckpts(s);
+    if (!parked_.make_room(bytes + (uint64_t) std::min<int64_t>(chain, chain_cap_) * ckpt_bytes_, evicted)) return;
+    for (Seq& s : evicted) {
+        std::fprintf(stderr, "lamina serve: prompt cache: a parked conversation of %zu cells evicted\n",
+                     s.tokens.size());
+        release(s, -1);
     }
+    evicted.clear();   // their K/V copies go before this one's is allocated
     Seq s;
     s.kv.reset(new (std::nothrow) uint8_t[bytes]);
     if (!s.kv || !kv_copy(L, L, s.kv.get(), true)) return;
@@ -138,7 +149,10 @@ void PromptCache::stash_live(int64_t keep_upto) {
             ++i;
         }
     }
+    if (!has_end)
+        if (void* h = save(L)) s.ckpts.push_back({L, h});   // the session is still at L
     if (s.ckpts.empty()) return;
+    enforce_cap(s);
     s.tokens = live_.tokens;
     for (const ImgKey& image : live_.imgs)
         if (image.start < L) s.imgs.push_back(image);
@@ -147,13 +161,12 @@ void PromptCache::stash_live(int64_t keep_upto) {
     parked_.park(std::move(s));
 }
 
-bool PromptCache::restore(Seq& seq, int64_t pos, bool prefix) {
-    Ckpt* ck = seq.find(pos);
+bool PromptCache::restore(const Seq& seq, int64_t pos, bool prefix) {
+    const Ckpt* ck = seq.find(pos);
     if (ck == nullptr) return false;
     const int64_t cells = prefix ? pos : seq.kv_cells;
     if (seq.kv && ensure_kv && !ensure_kv(cells)) return false;
     if (seq.kv && !kv_copy(cells, seq.kv_cells, seq.kv.get(), false)) return false;
-    ck->stamp = parked_.tick();
     return session_ckpt_load(ss_, g_, pos, ck->host, stream_);
 }
 
@@ -185,22 +198,16 @@ int64_t PromptCache::begin(const std::vector<int64_t>& ids, const std::vector<Im
     }
     if (from < 0) {
         // The live sequence continues.  When the prompt drops most of it (another conversation that shares a
-        // prefix), the rest goes to the park; an edit near the end just overwrites it.
+        // prefix), the rest is parked; an edit near the end just overwrites it.
         const int64_t dropped = L - best;
-        if (dropped >= 1024 && dropped > best) {
-            live_.pin = best;
-            stash_live(best);
-            live_.pin = -1;
-        }
+        if (dropped >= kParkDropped && dropped > best) stash_live(best);
         if (best < L && !restore(live_, best)) return zero();
         release(live_, best);
         live_.tokens.resize((size_t) best);
         live_.imgs = imgs;
         return best;
     }
-    int64_t newest = 0;
-    for (const Ckpt& c : parked_.entries()[(size_t) from].ckpts) newest = std::max(newest, c.pos);
-    if (best < newest) {
+    if (best < parked_.entries()[(size_t) from].ckpts.back().pos) {
         // Another conversation that shares the parked one's start: it borrows the cells before `best`, and the
         // parked conversation stays whole (pinned while the live one is parked beside it).
         parked_.entries()[(size_t) from].pin = best;
@@ -224,7 +231,7 @@ int64_t PromptCache::begin(const std::vector<int64_t>& ids, const std::vector<Im
     release(live_, 0);
     live_.tokens.clear();
     if (!restore(chosen, best)) {
-        release(chosen, 0);
+        release(chosen, -1);
         return zero();
     }
     live_.tokens.assign(chosen.tokens.begin(), chosen.tokens.begin() + best);
@@ -248,24 +255,11 @@ void PromptCache::set(int64_t pos, const int32_t* tokens, int64_t n) {
     for (int64_t i = 0; i < n; ++i) live_.tokens.push_back(tokens[i]);
 }
 
-void PromptCache::checkpoint(int64_t pos, bool tail) {
-    if (!enabled() || pos <= 0 || pos != (int64_t) live_.tokens.size()) return;
-    if (Ckpt* ck = live_.find(pos)) {   // a new checkpoint landing on an existing length: mount stamp advances
-        ck->stamp = parked_.tick();
-        return;
-    }
-    void* h = take_buffer();
+void PromptCache::checkpoint(int64_t pos) {
+    if (!enabled() || pos <= 0 || pos != (int64_t) live_.tokens.size() || live_.find(pos) != nullptr) return;
+    void* h = save(pos);
     if (h == nullptr) return;
-    cudaDeviceSynchronize();
-    const bool split = split_from > 0 && split_save;
-    if (!(split ? session_ckpt_save_layers(ss_, g_, pos, h, stream_, 0, split_from, 0)
-                : session_ckpt_save(ss_, g_, pos, h, stream_))) {
-        give_back(h);
-        return;
-    }
-    if (split) split_save(pos, h);
-    live_.ckpts.push_back({pos, h, parked_.tick(), tail});
-    live_.sort_ckpts();
+    live_.ckpts.push_back({pos, h});   // the newest: positions stay ascending
     enforce_cap(live_);
 }
 
@@ -273,7 +267,7 @@ void PromptCache::clear() {
     release(live_, -1);
     live_.tokens.clear();
     live_.imgs.clear();
-    for (Seq& s : parked_.drain()) free_ckpts(s);
+    for (Seq& s : parked_.drain()) release(s, -1);
 }
 
 PromptCache::State PromptCache::state() const {
@@ -291,9 +285,9 @@ PromptCache::State PromptCache::state() const {
 std::string PromptCache::summary() const {
     char buf[256];
     std::snprintf(buf, sizeof buf,
-                  "live %lld cells; %zu checkpoints (%.0f MiB); parked %zu conversations (%.0f MiB, %zu evictions)",
+                  "live %lld cells, %zu checkpoints (%.0f MiB); %zu parked conversations (%.0f MiB, %zu evicted)",
                   (long long) live_.tokens.size(), live_.ckpts.size(),
-                  (double) live_.ckpts.size() * ckpt_bytes_ / 1048576.0, parked_.size(),
+                  (double) live_.ckpts.size() * (double) ckpt_bytes_ / 1048576.0, parked_.size(),
                   (double) parked_.bytes() / 1048576.0, parked_.evictions());
     return buf;
 }

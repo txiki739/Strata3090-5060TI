@@ -139,12 +139,13 @@ engine's arguments.
   `"fit_max_tokens": false` in the config (or `--no-fit-max-tokens`) gives llama.cpp's 400 instead.
 - **The prompt cache**: a request continues from the longest start of its prompt the engine holds, so the next turn of a
   chat or an agent reads only what is new. Each conversation keeps its own checkpoints of the sequence state in RAM
-  (at each turn and in long prompts; `--prompt-cache N`, default 6 per conversation), and a conversation another
-  request replaces (a chat app's title request, a subagent) is parked in RAM with its K/V (`--conversation-cache-mib
-  MIB`, default 8192, up to `--conversation-cache-slots N` of them, default 4) so switching back continues where it
-  was; a parked conversation leaves only whole, oldest first, and `--conversation-cache-min-tokens N` (default
-  1024) keeps short side requests from taking the slots a long conversation needs. The engine keeps the model's own
-  token ids of each reply for the next turn. Responses report the reused tokens
+  (at each turn and in long prompts; `--prompt-cache N`, default 16 per conversation), and a conversation another
+  request replaces (a chat app's title request, a subagent) is parked in RAM with its K/V and its checkpoints
+  (`--conversation-cache-mib MIB`, default 16384; `--conversation-cache-slots N` caps their number, by default only
+  the memory does) so switching back continues where it was. A parked conversation leaves only whole, the least
+  recently used first; `--conversation-cache-min-tokens N` (default 1024) keeps shorter ones out. The Monitor's
+  Conversation cache card shows them. The engine keeps the model's own token ids of each reply for the next turn.
+  Responses report the reused tokens
   (`usage.prompt_tokens_details.cached_tokens`; Anthropic: `cache_read_input_tokens`).
 - **Guards**: a reply that repeats one token 256 times ends as `"length"` (`"repeat_stop_tokens"` sets the run, 0 turns
   it off); a verify window whose logits are not finite emits nothing, the engine drops its cached state and the server

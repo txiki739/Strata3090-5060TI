@@ -238,19 +238,15 @@ struct Options {
     bool vision = false;
     /// --serve prompt cache: checkpoints of the sequence state each conversation keeps in host memory (0 = every
     /// request starts from an empty sequence).  A request continues from the longest prefix the session, one of
-    /// the conversation's own checkpoints, or a parked conversation holds.
-    int prompt_cache = 6;
-    /// --conversation-cache-mib: host memory for parked conversations (their K/V cells and their checkpoint
-    /// chains), in MiB.  A parked conversation leaves only whole, least recently used first (0 = no parking).
-    int64_t conversation_cache_mib = 8192;
-    /// --conversation-cache-slots: at most this many parked conversations whatever their length.
-    int conversation_cache_slots = 4;
-    /// --conversation-cache-min-tokens: park only conversations of at least this many tokens, so short side
-    /// requests do not take the slots a long conversation needs.  0 = park every conversation.
+    /// the live conversation's checkpoints or a parked conversation holds.
+    int prompt_cache = 16;
+    /// --conversation-cache-mib: host memory for parked conversations (their K/V cells and their checkpoints), in
+    /// MiB (0 = none parked).  A parked conversation leaves only whole, the least recently used first.
+    int64_t conversation_cache_mib = 16384;
+    /// --conversation-cache-slots: at most this many parked conversations (0 = as many as the memory holds).
+    int conversation_cache_slots = 0;
+    /// --conversation-cache-min-tokens: park only conversations of at least this many tokens.
     int64_t conversation_cache_min_tokens = 1024;
-    /// --prompt-cache-spread: thin a conversation's chain geometrically back from its newest instead of the
-    /// root-pinned least-recent-use default (better for edits far back, worse for the recent turns).
-    bool prompt_cache_spread = false;
     /// Checkpoint interval inside long prompts, in whole prompt chunks (counted from the request's first new cell).
     int64_t prompt_cache_every = 16384;
     /// Prompt parts of up to this many tokens go through verify windows instead of the batched prompt path: a new
@@ -325,20 +321,17 @@ void usage() {
                  "  --dump-routing PATH  write the routed expert ids and weights per layer per position\n"
                  "  --serve              stay resident and take requests on stdin, as serve/server.py sends them\n"
                  "  --vision             --serve takes images too (GENI requests; embeddings from lamina-vision)\n"
-                 "  --prompt-cache N     --serve: keep N checkpoints of the sequence state per conversation and\n"
-                 "                       continue each request from the longest cached prefix (default 6;\n"
-                 "                       0 = every request starts from an empty sequence)\n"
+                 "  --prompt-cache N     --serve: keep up to N checkpoints of the sequence state per conversation in\n"
+                 "                       host memory and continue each request from the longest cached prefix\n"
+                 "                       (default 16; 0 = every request starts from an empty sequence)\n"
                  "  --prompt-cache-every N  checkpoint interval inside long prompts, rounded down to whole --prefill\n"
                  "                       chunks (default 16384)\n"
-                 "  --prompt-cache-spread  thin a conversation's checkpoints geometrically back from its newest\n"
-                 "                       instead of the root-pinned least-recent-use default\n"
-                 "  --conversation-cache-mib MIB  --serve: host memory for parked conversations (their K/V cells\n"
-                 "                       and their checkpoint chains), so switching back to them continues where\n"
-                 "                       they left off; a parked conversation leaves only whole, oldest first\n"
-                 "                       (default 8192)\n"
-                 "  --conversation-cache-slots N  --serve: at most N parked conversations (default 4)\n"
-                 "  --conversation-cache-min-tokens N  --serve: park only conversations of at least N tokens, so\n"
-                 "                       short side requests do not take the slots a long one needs (default 1024)\n"
+                 "  --conversation-cache-mib MIB  --serve: host memory for conversations a request replaced (their\n"
+                 "                       K/V cells and checkpoints), so switching back to one continues where it\n"
+                 "                       was; the least recently used leaves whole first (default 16384; 0 = none)\n"
+                 "  --conversation-cache-slots N  --serve: at most N such conversations (default 0: no limit)\n"
+                 "  --conversation-cache-min-tokens N  --serve: keep only conversations of at least N tokens\n"
+                 "                       (default 1024)\n"
                  "  --feed-max N         --serve: new prompt parts and last prompt chunks of up to N tokens run\n"
                  "                       through verify windows instead of the batched prompt path (default 128)\n"
                  "  --tail-role-token ID --serve: a turn of this role right before the last turn stays out of the\n"
@@ -1236,7 +1229,6 @@ int lamina::program::run(int argc, char** argv) {
         else if (a == "--vision") o.vision = true;
         else if (a == "--prompt-cache") o.prompt_cache = std::max(0, std::atoi(next("--prompt-cache")));
         else if (a == "--prompt-cache-every") o.prompt_cache_every = std::max<int64_t>(1, std::atoll(next("--prompt-cache-every")));
-        else if (a == "--prompt-cache-spread") o.prompt_cache_spread = true;
         else if (a == "--conversation-cache-mib") o.conversation_cache_mib = std::max<int64_t>(0, std::atoll(next("--conversation-cache-mib")));
         else if (a == "--conversation-cache-slots") o.conversation_cache_slots = std::max(0, std::atoi(next("--conversation-cache-slots")));
         else if (a == "--conversation-cache-min-tokens") o.conversation_cache_min_tokens = std::max<int64_t>(0, std::atoll(next("--conversation-cache-min-tokens")));
@@ -3070,14 +3062,24 @@ int lamina::program::run(int argc, char** argv) {
         kv_states.push_back(&mtp.kv_state());
         lamina::core::PromptCache pcache(g, ss, kv_states, main_cs, o.prompt_cache,
                                          (uint64_t) o.conversation_cache_mib << 20, (size_t) o.conversation_cache_slots,
-                                         o.conversation_cache_min_tokens, o.prompt_cache_spread);
+                                         o.conversation_cache_min_tokens);
         // the elastic K/V: a parked conversation's restore (or the live one's park) copies all its cells
         if (kvg.on) pcache.ensure_kv = [&](int64_t cells) { return kvg_ensure(cells + 256); };
         if (pcache.enabled())
             std::fprintf(stderr, "lamina serve: prompt cache on: up to %d checkpoints of %.1f MiB per conversation, "
-                                 "%lld MiB for up to %d parked conversations\n", o.prompt_cache,
+                                 "%lld MiB for the conversations requests replace%s\n", o.prompt_cache,
                          (double) pcache.ckpt_bytes() / 1048576.0, (long long) o.conversation_cache_mib,
-                         o.conversation_cache_slots);
+                         o.conversation_cache_slots > 0
+                             ? (", at most " + std::to_string(o.conversation_cache_slots) + " of them").c_str() : "");
+        // the CACHE line (the server's Conversation cache card): at READY, then after each request before its DONE
+        auto print_cache = [&] {
+            if (!pcache.enabled()) return;
+            const auto cs = pcache.state();
+            serve_print("CACHE live=%lld checkpoints=%zu parked=%zu parked_bytes=%llu parked_budget=%llu slots=%zu "
+                        "evictions=%zu\n", (long long) cs.live_cells, cs.checkpoints, cs.parked,
+                        (unsigned long long) cs.parked_bytes, (unsigned long long) cs.parked_budget, cs.slots,
+                        cs.evictions);
+        };
         // stdin is read on its own thread, so a STOP line reaches a request that is still running (the client went
         // away, or pressed Esc): the flag is checked between prompt chunks and between verify windows.
         std::atomic<bool> stop_req{false};
@@ -3236,6 +3238,7 @@ int lamina::program::run(int argc, char** argv) {
                         (long long) (lamina::kernels::cpu::expert_layout().total >> 20), pool.workers(), o.pcie_frac,
                         o.spec_min_p, o.second_gpu, (long long) o.tail_role_token);
         }
+        print_cache();
         // --ple-io ram: READY only once the table is in RAM.  While it loads, its 28.8 GB of reads compete with the
         // requests and the rows still come from the SSD: a first chat right after READY decoded at ~21 tok/s instead
         // of ~95 and a 32K prompt read 13% slower.  LAMINA_PLE_RAM_NOWAIT=1: before.
@@ -3666,7 +3669,7 @@ int lamina::program::run(int argc, char** argv) {
                         if (track && c > from && c < to) {
                             if (!feed(from, c)) return false;
                             if (poison_at >= 0) return true;
-                            pcache.checkpoint(c, true);   // a fork / msg_end cut: a tail, the first to go
+                            pcache.checkpoint(c);
                             from = c;
                         }
                     return feed(from, to);
@@ -3887,15 +3890,7 @@ int lamina::program::run(int argc, char** argv) {
             serve_print("TIERS main_swaps=%lld main_fills=%lld main_dropped=%lld%s deterministic_adapt=%d\n",
                         (long long) (t1.main_swaps - t0.main_swaps), (long long) (t1.main_fills - t0.main_fills),
                         (long long) (t1.main_dropped - t0.main_dropped), per_tier.c_str(), o.deterministic_adapt ? 1 : 0);
-            // the prompt cache's state for the Monitor's Conversation cache card (before DONE: the request
-            // loop reads lines until DONE, and this is the state the request leaves behind)
-            if (pcache.enabled()) {
-                const auto cs = pcache.state();
-                serve_print("CACHE live=%lld checkpoints=%zu parked=%zu parked_bytes=%llu parked_budget=%llu "
-                            "slots=%zu evictions=%zu\n",
-                            (long long) cs.live_cells, cs.checkpoints, cs.parked, (unsigned long long) cs.parked_bytes,
-                            (unsigned long long) cs.parked_budget, cs.slots, cs.evictions);
-            }
+            print_cache();
             // DONE <generated> <prompt> <prompt ms> <decode ms> <finish> <drafts accepted> <drafts offered> <reused>
             // <expert-cache hits> <lookups>
             serve_print("DONE %lld %lld %.1f %.1f %s %lld %lld %lld %lld %lld\n", (long long) produced_n, (long long) n,
