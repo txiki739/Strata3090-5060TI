@@ -114,6 +114,8 @@ public:
     virtual std::pair<int, int> admission() { return {0, 0}; }
     /// replicas: each one's state (null without them)
     virtual json replica_view() { return nullptr; }
+    /// the Conversation cache card: the engine's CACHE line, or the park at rest (null: the cache is off)
+    virtual json cache_view() { return nullptr; }
 
     // what the last request left (read by its own thread after generate returns)
     json last = json::object();            ///< the DONE line's figures (and its LP / TIERS notes)
@@ -166,11 +168,14 @@ public:
     uint64_t done_count() const override;
     json slots_view() override;
     std::pair<int, int> admission() override;
+    json cache_view() override;
 
 private:
     void start();
     void send(const std::string& line);
     bool note_line(const std::string& line);
+    /// a CACHE line: the prompt cache's state after a request (the Conversation cache card)
+    void cache_line(const std::string& line);
     void parse_done(const std::string& line);
     EngineSilent silent(const std::string& what);
     json& figures();   ///< where parse_done writes: `last`, or this thread's with batch slots
@@ -243,6 +248,8 @@ private:
     bool unloaded_ = true;
     json pending_ = json::object();           ///< the request's LP / TIERS notes until its DONE
     std::string silent_note_;
+    std::mutex cache_mu_;
+    json cache_ = json::object();             ///< the last CACHE line (the Monitor's Conversation cache card)
     std::mutex start_mu_;
 };
 

@@ -343,6 +343,34 @@ bool LaminaEngine::note_line(const std::string& line) {
     return false;
 }
 
+void LaminaEngine::cache_line(const std::string& line) {
+    json out = json::object();
+    for (const auto& kv : split_ws(line)) {
+        const size_t eq = kv.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string val = kv.substr(eq + 1);
+        if (!digits(val, true)) continue;   // a malformed field is left out
+        out[kv.substr(0, eq)] = std::atoll(val.c_str());
+    }
+    const std::lock_guard<std::mutex> g(cache_mu_);
+    cache_ = std::move(out);
+}
+
+json LaminaEngine::cache_view() {
+    const std::lock_guard<std::mutex> g(cache_mu_);
+    if (!cache_.empty()) return cache_;
+    // before the engine's first CACHE line: the park at rest, its budgets read from the engine's own args
+    auto flag = [&](const char* name, int64_t def) {
+        for (size_t i = 0; i + 1 < args_.size(); ++i)
+            if (args_[i] == name) return static_cast<int64_t>(std::atoll(args_[i + 1].c_str()));
+        return def;
+    };
+    if (flag("--prompt-cache", 6) <= 0) return nullptr;   // the cache is off: no card
+    return json{{"live", 0},        {"checkpoints", 0}, {"parked", 0},
+                {"parked_bytes", 0}, {"parked_budget", flag("--conversation-cache-mib", 8192) * 1048576},
+                {"slots", flag("--conversation-cache-slots", 4)}, {"evictions", 0}};
+}
+
 void LaminaEngine::parse_done(const std::string& line) {
     const std::vector<std::string> f = split_ws(line);
     auto i = [&](size_t k) { return k < f.size() ? (int64_t) std::atoll(f[k].c_str()) : 0; };
@@ -484,6 +512,7 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
             if (got == 0) continue;
             if (got < 0 || starts_with(l, "ERR")) break;
             note_line(l);
+            if (starts_with(l, "CACHE ")) cache_line(l);   // the card keeps the state a stopped request left
             if (starts_with(l, "T ")) {
                 sent.push_back((int32_t) std::atoi(l.c_str() + 2));
                 drained.push_back(sent.back());
@@ -568,6 +597,8 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
         } else if (starts_with(l, "RESUME ")) {   // the reused tokens: the first chunk starts after them
             const std::vector<std::string> f = split_ws(l);
             if (f.size() > 1 && digits(f[1])) read_to = reused = std::atoll(f[1].c_str());
+        } else if (starts_with(l, "CACHE ")) {   // the prompt cache's state: the Monitor's Conversation cache card
+            cache_line(l);
         } else if (note_line(l)) {
         } else if (starts_with(l, "DONE")) {
             parse_done(l);

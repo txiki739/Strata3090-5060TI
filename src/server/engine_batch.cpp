@@ -303,6 +303,8 @@ void LaminaEngine::control(Cancel& cancel, const std::function<void(int32_t)>& o
             const std::vector<std::string> f = split_ws(line);
             if (f.size() >= 3 && digits(f[2]) && (digits(f[1]) || (f[1].size() > 1 && f[1][0] == '-' && digits(f[1].substr(1)))))
                 yielded_ = std::make_pair(std::stoi(f[1]), (int64_t) std::stoll(f[2]));
+        } else if (starts_with(line, "CACHE ")) {   // the prompt cache's state: the Monitor's Conversation cache card
+            cache_line(line);
         } else if (starts_with(line, "ERR")) {
             ctl_erred_ = true;   // #1059: the engine refused it and is idle: no DONE follows
             throw EngineError(std::string(strip(line.substr(std::min<size_t>(4, line.size())))));
@@ -332,6 +334,7 @@ std::string LaminaEngine::drain_control(const std::string& until, int born, doub
         if (got == 0) continue;
         if (got < 0) return "";
         if (starts_with(line, "DONE")) parse_done(line);
+        if (starts_with(line, "CACHE ")) cache_line(line);   // the card keeps the state a left-early request left
         if (starts_with(line, until) || starts_with(line, "ERR")) return line;
     }
     return "";
