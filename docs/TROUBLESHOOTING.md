@@ -86,7 +86,8 @@ that on a slow PC: raise `engine_silence_s` in the config (default 300).
 `--vision on`.
 
 **Pictures take seconds.** The image encoder runs on the CPU: about 9 s for a picture of ~1,000 image tokens on an
-8-core CPU. The config's `vision.max_tokens` caps a picture's tokens (1,024 in the configs).
+8-core CPU. The config's `vision.max_tokens` caps a picture's tokens (1,024 in the configs). With a GPU that has
+~1.3 GB to spare, setup's `--vision gpu` runs the encoder there (about 2 s for such a picture).
 
 **Two runs of one greedy request differ.** Where an expert is computed changes its rounding a little, and the GPUs'
 expert caches change as their copies land, so runs can part at a near-tie

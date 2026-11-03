@@ -24,7 +24,7 @@ Without `--model`, setup builds the engine only.
 | --- | --- |
 | `--check` | say what this PC has (GPUs, RAM, disk, the tools) and what the model needs; change nothing |
 | `--data-dir DIR` | where the model files go (default `../Lamina-data`, beside the clone) |
-| `--vision on\|off` | pictures (default on; the image encoder runs on the CPU) |
+| `--vision on\|off\|gpu[:GPU]` | pictures (default on; the image encoder runs on the CPU). `gpu` builds it with CUDA (`build-vision-cuda`) and runs it on a GPU: the one named (name, UUID or nvidia-smi index), else the one with the least VRAM besides the main GPU; it takes ~1.3 GB there |
 | `--main-gpu GPU` | the GPU the model runs on (default: the one with the most VRAM that drives no display) |
 | `--context N` | the context in tokens (default: the example config's) |
 | `--port N` | the server's port (default 8081 to 8084 by model) |
@@ -41,7 +41,8 @@ result is already there is skipped, so setup runs again after an interruption or
 2. The server with the engine, `build/lamina-server` (`.exe`, with the CUDA runtime DLLs beside it; `build/lamina` is
    the engine alone), for this PC's GPUs, and the image encoder, `build-vision/bin/lamina-vision`: llama.cpp's mtmd
    library with the model's projector, run on the CPU beside the engine so the GPUs keep their VRAM for experts. The encoder is built for any AVX2 CPU: a native build on an AVX-512
-   CPU loses flash attention and encodes about half as fast.
+   CPU loses flash attention and encodes about half as fast. With `--vision gpu` it is built with CUDA instead,
+   `build-vision-cuda/bin/lamina-vision`, and runs on the GPU the option picks.
 3. The model's files from Hugging Face at pinned revisions, into the data folder, resumed when interrupted and checked
    once by size and SHA-256 (`<file>.sha256` beside each records the check):
    [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF),
@@ -69,7 +70,7 @@ result is already there is skipped, so setup runs again after an interruption or
 | `model_name` | the name the API lists |
 | `port`, `log` | the server's port; the engine's log file |
 | `sampling` | the defaults for requests that send no sampling fields ([USING.md](USING.md#sampling)) |
-| `vision` | the image encoder: its binary, the projector, the model, `threads` (the CPU's logical cores) |
+| `vision` | the image encoder: its binary, the projector, the model, `threads` (the CPU's logical cores), or with `--vision gpu` `gpu` and `cuda_device` (the card it runs on) |
 | `expert_profile_save`, `expert_profile_save_every` | what the run learned about the experts (below) |
 
 The server's other keys (the network, API keys, idle unload, MCP servers, image generation):

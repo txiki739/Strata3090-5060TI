@@ -247,6 +247,17 @@ def pick_main(usable: list) -> Gpu:
     return max(pool, key=lambda g: (g.mem_mib, -g.index))
 
 
+def pick_vision_gpu(spec: str | None, usable: list, main: Gpu | None) -> Gpu | None:
+    """The GPU of --vision gpu[:GPU]: the one named (its name, UUID or nvidia-smi index), else the one with the least
+    VRAM besides the model's main GPU (where the encoder's ~1.3 GB of experts matter least), else the main GPU. None
+    when the name matches no GPU."""
+    if spec:
+        return next((g for g in usable if spec in (g.name, g.uuid, str(g.index))), None) or \
+            next((g for g in usable if spec.lower() in g.name.lower()), None)
+    pool = [g for g in usable if main is None or g.index != main.index] or usable
+    return min(pool, key=lambda g: (g.mem_mib, -g.index)) if pool else None
+
+
 # ---- the tools
 
 def find_tool(name):
@@ -440,12 +451,22 @@ def cuda_dlls(nvcc: str) -> list:
             for dll in [*(tk / "x64").glob(pat), *tk.glob(pat)]]
 
 
-def build_vision(tc: Toolchain, env: dict):
+def build_vision(tc: Toolchain, env: dict, cuda_archs: str | None = None):
     """The image encoder runs on the CPU, built for any AVX2 CPU: a native build on an AVX-512 CPU runs without flash
-    attention, about half as fast."""
-    cmake_build(tc, ROOT / "tools" / "vision", ROOT / "build-vision", "lamina-vision",
-                [f"-DLLAMA_DIR={LLAMA.as_posix()}", "-DLAMINA_VISION_CUDA=OFF", "-DLAMINA_PORTABLE=ON"], env)
-    ok(f"the image encoder: build-vision/bin/lamina-vision{EXE}")
+    attention, about half as fast. With --vision gpu (`cuda_archs`) it is built with CUDA, into build-vision-cuda."""
+    if not cuda_archs:
+        cmake_build(tc, ROOT / "tools" / "vision", ROOT / "build-vision", "lamina-vision",
+                    [f"-DLLAMA_DIR={LLAMA.as_posix()}", "-DLAMINA_VISION_CUDA=OFF", "-DLAMINA_PORTABLE=ON"], env)
+        ok(f"the image encoder: build-vision/bin/lamina-vision{EXE}")
+        return
+    b = ROOT / "build-vision-cuda"
+    cmake_build(tc, ROOT / "tools" / "vision", b, "lamina-vision",
+                [f"-DLLAMA_DIR={LLAMA.as_posix()}", "-DLAMINA_VISION_CUDA=ON", f"-DCMAKE_CUDA_ARCHITECTURES={cuda_archs}",
+                 "-DLAMINA_PORTABLE=ON", *cuda_defs(tc.nvcc)], env)
+    if WIN:   # the CUDA runtime beside the encoder
+        for dll in cuda_dlls(tc.nvcc):
+            shutil.copy2(dll, b / "bin" / dll.name)
+    ok(f"the image encoder: build-vision-cuda/bin/lamina-vision{EXE} (CUDA architectures {cuda_archs})")
 
 
 def cuda_lib_dir(nvcc: str | None):
@@ -590,7 +611,22 @@ def prepare(key: str, m: Model, data: Path, vision: bool):
 EXAMPLE_DATA = "../Lamina-data"   # the data folder of examples/*.json
 
 
-def write_config(key: str, data: Path, main_gpu: str, port: int, vision: bool, context, nvcc) -> Path:
+def vision_section(v: dict, gpu: Gpu | None) -> dict:
+    """The config's `vision` section from the example's: the CPU encoder on this PC's logical cores, or the CUDA build
+    on `gpu` (`cuda_device`: the server runs the encoder on that card alone, #408)."""
+    v = dict(v)
+    if gpu is None:
+        v["threads"] = os.cpu_count() or 8
+        return v
+    v["exe"] = v["exe"].replace("/build-vision/", "/build-vision-cuda/", 1)
+    v["gpu"] = True
+    v["cuda_device"] = gpu.uuid
+    v.pop("threads", None)
+    return v
+
+
+def write_config(key: str, data: Path, main_gpu: str, port: int, vision: bool, context, nvcc,
+                 vision_gpu: Gpu | None = None) -> Path:
     """lamina-<key>.json from examples/<key>.json. The example's keys are written anew; the other keys of a config
     written before (an API key, the "images" of tools/image/install.py) are kept."""
     cfg = json.loads((ROOT / "examples" / f"{key}.json").read_text(encoding="utf-8"))
@@ -616,8 +652,7 @@ def write_config(key: str, data: Path, main_gpu: str, port: int, vision: bool, c
     if context:
         args[args.index("--max-context") + 1] = str(context)
     if vision:
-        cfg["vision"] = {k: fix(v) for k, v in cfg["vision"].items()}
-        cfg["vision"]["threads"] = os.cpu_count() or 8
+        cfg["vision"] = vision_section({k: fix(v) for k, v in cfg["vision"].items()}, vision_gpu)
     else:
         args = [a for a in args if a != "--vision"]
         cfg.pop("vision", None)
@@ -658,7 +693,9 @@ def main() -> int:
     ap.add_argument("--model", choices=list(MODELS), help="the model to prepare (without it: the engine only)")
     ap.add_argument("--data-dir", default=str(ROOT.parent / "Lamina-data"),
                     help="the models, the draft layer and the image projector (default: Lamina-data beside this checkout)")
-    ap.add_argument("--vision", choices=("on", "off"), default="on", help="pictures (the encoder runs on the CPU)")
+    ap.add_argument("--vision", default="on", metavar="on|off|gpu[:GPU]",
+                    help="pictures: on (the encoder runs on the CPU), off, or gpu (built with CUDA and run on a GPU: its "
+                         "name, UUID or nvidia-smi index; default the one with the least VRAM besides the main GPU)")
     ap.add_argument("--main-gpu", help="the GPU the model runs on: its name, UUID or nvidia-smi index (default: the one "
                                        "with the most VRAM that drives no display)")
     ap.add_argument("--context", type=int, help="the context in tokens (default: the example config's)")
@@ -670,6 +707,8 @@ def main() -> int:
     ap.add_argument("--portable", action="store_true",
                     help="build the engine for other PCs (any AVX2 CPU), as the Docker image does")
     a = ap.parse_args()
+    if a.vision not in ("on", "off", "gpu") and not a.vision.startswith("gpu:"):
+        ap.error(f"--vision {a.vision}: on, off, gpu or gpu:GPU")
 
     say(f"Lamina setup in {ROOT}")
     if platform.machine().lower() not in ("amd64", "x86_64"):
@@ -720,6 +759,12 @@ def main() -> int:
             warn("the data folder's drive is short of room for the downloads")
     build = not (a.no_build and (ROOT / "build" / f"lamina-server{EXE}").exists())
     archs = a.cuda_archs or cuda_archs(usable)
+    vision_gpu = None
+    if a.vision.startswith("gpu"):
+        vision_gpu = pick_vision_gpu(a.vision[4:] or None, usable, main_gpu)
+        if vision_gpu is None:
+            fail(f"--vision {a.vision}: no such GPU of compute capability 8.0 or newer")
+        say(f"  pictures: the image encoder on GPU {vision_gpu.index}, {vision_gpu.name} (~1.3 GB of its VRAM)")
     problems = tc.problems() if build else []
     if problems:
         say("\nmissing for the build:")
@@ -746,14 +791,16 @@ def main() -> int:
         if not tc.cmake or not tc.ninja:
             fail("CMake or Ninja is not in this environment after pip installed requirements-build.txt")
     fetch_llama()
-    vision = a.vision == "on"
+    vision = a.vision != "off"
     if build:
         say("\n2. the engine and the image encoder")
         env = vs_environment(tc.vcvars) if WIN else clean_env()
         build_engine(tc, archs, a.portable, env)
-        build_vision(tc, env)
+        build_vision(tc, env, archs if vision_gpu else None)
     else:
         say("\n2. the binaries as they are (--no-build)")
+        if vision_gpu and not (ROOT / "build-vision-cuda" / "bin" / f"lamina-vision{EXE}").exists():
+            fail("--vision gpu: build-vision-cuda/bin/lamina-vision is not built: run setup without --no-build")
     if not m:
         say("\nDone: the engine is built. Prepare a model with --model (" + ", ".join(MODELS) + ").")
         return 0
@@ -764,7 +811,7 @@ def main() -> int:
     prepare(a.model, m, data, vision)
     say("\n5. the config and the launcher")
     port = a.port or m.port
-    cfg = write_config(a.model, data, gpu_spec(main_gpu, gl), port, vision, a.context, tc.nvcc)
+    cfg = write_config(a.model, data, gpu_spec(main_gpu, gl), port, vision, a.context, tc.nvcc, vision_gpu)
     launcher = write_launcher(a.model, m, cfg, port)
     ok(f"{cfg.name}, {launcher.name}")
     say(f"\nDone. Start it with {launcher.name}: the API on http://127.0.0.1:{port}/v1 (OpenAI and Anthropic), "
