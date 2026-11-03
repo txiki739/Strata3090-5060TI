@@ -78,6 +78,8 @@ public:
     std::pair<int, int> admission() override;
     /// for /metrics: each replica's state, requests running and requests routed to it so far
     json replica_view() override;
+    /// the Conversation cache card: the replicas' caches together (each field summed)
+    json cache_view() override;
 
 private:
     int route(const std::vector<int32_t>& ids);

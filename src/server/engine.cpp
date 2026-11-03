@@ -65,6 +65,10 @@ void LaminaEngine::start() {
     std::lock_guard<std::mutex> lk(start_mu_);
     unloaded_ = false;
     max_context_ = 0;   // before this start is visible: never its predecessor's
+    {
+        const std::lock_guard<std::mutex> g(cache_mu_);
+        cache_ = json::object();   // nor its cache's state: this one prints its own before READY
+    }
     in_ = std::make_shared<LineChannel>();
     out_ = std::make_shared<LineChannel>();
     auto partial = std::make_shared<std::string>();
@@ -139,6 +143,8 @@ void LaminaEngine::start() {
                 const std::string k = kv.substr(0, eq), v = eq == std::string::npos ? "" : kv.substr(eq + 1);
                 info[k] = digits(v, true) ? json(std::atoll(v.c_str())) : json(v);
             }
+        } else if (starts_with(line, "CACHE ")) {   // the prompt cache at rest
+            cache_line(line);
         } else if (starts_with(line, "READY")) {
             const std::vector<std::string> f = split_ws(line);
             max_context_ = f.size() > 1 ? std::atoll(f[1].c_str()) : 0;
@@ -357,18 +363,12 @@ void LaminaEngine::cache_line(const std::string& line) {
 }
 
 json LaminaEngine::cache_view() {
+    if (!alive()) return nullptr;   // an engine that is not running holds no cache
     const std::lock_guard<std::mutex> g(cache_mu_);
-    if (!cache_.empty()) return cache_;
-    // before the engine's first CACHE line: the park at rest, its budgets read from the engine's own args
-    auto flag = [&](const char* name, int64_t def) {
-        for (size_t i = 0; i + 1 < args_.size(); ++i)
-            if (args_[i] == name) return static_cast<int64_t>(std::atoll(args_[i + 1].c_str()));
-        return def;
-    };
-    if (flag("--prompt-cache", 6) <= 0) return nullptr;   // the cache is off: no card
-    return json{{"live", 0},        {"checkpoints", 0}, {"parked", 0},
-                {"parked_bytes", 0}, {"parked_budget", flag("--conversation-cache-mib", 8192) * 1048576},
-                {"slots", flag("--conversation-cache-slots", 4)}, {"evictions", 0}};
+    if (cache_.empty()) return nullptr;   // no CACHE line: the cache is off
+    json v = cache_;
+    v["active"] = v.value("live", (int64_t) 0) > 0 ? 1 : 0;   // a conversation in the session
+    return v;
 }
 
 void LaminaEngine::parse_done(const std::string& line) {

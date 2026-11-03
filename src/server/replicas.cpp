@@ -337,6 +337,18 @@ json ReplicaEngine::replica_view() {
     return out;
 }
 
+json ReplicaEngine::cache_view() {
+    json sum = nullptr;
+    for (const auto& e : engines_) {
+        const json v = e->cache_view();
+        if (v.is_null()) continue;
+        if (sum.is_null()) sum = json::object();
+        for (auto it = v.begin(); it != v.end(); ++it)
+            sum[it.key()] = sum.value(it.key(), (int64_t) 0) + it.value().get<int64_t>();
+    }
+    return sum;
+}
+
 void ReplicaEngine::load() {
     // the replicas that are not running start (together); the others serve when one does not
     std::vector<size_t> dead;

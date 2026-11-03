@@ -114,7 +114,8 @@ public:
     virtual std::pair<int, int> admission() { return {0, 0}; }
     /// replicas: each one's state (null without them)
     virtual json replica_view() { return nullptr; }
-    /// the Conversation cache card: the engine's CACHE line, or the park at rest (null: the cache is off)
+    /// the Monitor's Conversation cache card: the running engine's last CACHE line and `active` (null: the cache is
+    /// off, or no engine runs)
     virtual json cache_view() { return nullptr; }
 
     // what the last request left (read by its own thread after generate returns)
@@ -174,7 +175,7 @@ private:
     void start();
     void send(const std::string& line);
     bool note_line(const std::string& line);
-    /// a CACHE line: the prompt cache's state after a request (the Conversation cache card)
+    /// a CACHE line: the prompt cache's state at READY and after each request (the Conversation cache card)
     void cache_line(const std::string& line);
     void parse_done(const std::string& line);
     EngineSilent silent(const std::string& what);
