@@ -464,9 +464,17 @@ bool parse_i64_list(const char* s, std::vector<int64_t>& out, std::string& err) 
 }
 
 /// A serve request that failed on a CUDA fault (an illegal address) leaves at once (#224): the fault poisons the
-/// context for the whole process, and the destructors run on it can hang until the server's watchdog.
+/// context for the whole process, and the destructors run on it can hang until the server's watchdog.  An
+/// out-of-memory (a window's graph that did not fit) poisons nothing: it is taken off the thread and the engine ends
+/// the ordinary way, so the request's ERR reaches the client and the next request starts the engine again (#37).
+/// A sticky error stays after cudaGetLastError(), and still leaves at once.
 void exit_on_cuda_fault() {
-    if (cudaPeekAtLastError() == cudaSuccess) return;
+    const cudaError_t e = cudaPeekAtLastError();
+    if (e == cudaSuccess) return;
+    if (e == cudaErrorMemoryAllocation) {
+        (void) cudaGetLastError();
+        if (cudaPeekAtLastError() == cudaSuccess) return;
+    }
     std::fflush(stderr);
     std::_Exit(1);
 }
