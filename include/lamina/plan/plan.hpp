@@ -135,7 +135,7 @@ inline Plan make_plan(uint64_t max_context, const Geometry& g, const Costs& c,
     p.state_bytes = c.state_bytes;
     p.dram_experts = c.dense_bytes + c.embd_bytes; // costs that never enter the pool
 
-    const uint64_t fixed = c.dense_bytes + c.embd_bytes + c.mtp_bytes + c.workspace_bytes + c.state_bytes;
+    const uint64_t fixed = c.mtp_bytes + c.workspace_bytes + c.state_bytes;   // the dense ones are outside the pool
     if (p.kv_bytes + fixed > pool) {
         throw DoesNotClose("max-context " + std::to_string(max_context) + " needs " +
                            std::to_string(p.kv_bytes + fixed) + " B of the " + std::to_string(pool) +

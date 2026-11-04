@@ -15,6 +15,7 @@ int main(int argc, char** argv) {
     uint64_t free_vram = 12ull * 1000 * 1000 * 1000; // RTX 5070 nominal; overridden by --vram
     lamina::plan::Costs costs;
     bool state_given = false;
+    uint64_t pool_given = 0;   // --pool: the pool itself (0: from --vram)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&](uint64_t& out) {
@@ -38,9 +39,7 @@ int main(int argc, char** argv) {
             next(costs.state_bytes);
             state_given = true;
         } else if (a == "--pool") {
-            uint64_t v = 0;
-            next(v);
-            free_vram = v;
+            next(pool_given);
         } else if (a == "--help" || a == "-h") {
             std::printf("usage: lamina-plan [--max-context N] [--vram BYTES] [--dense B] [--embd B]\n"
                         "                   [--workspace B] [--state B] [--pool B]\n"
@@ -57,13 +56,14 @@ int main(int argc, char** argv) {
     // default, it is an omission - and this one was worth 85 cache slots of overcommit.
     if (!state_given) costs.state_bytes = lamina::plan::state_bytes(lamina::plan::Geometry{});
     // The pool is what the KV cache and the expert cache share.  Derived from the card's free VRAM less the
-    // resident dense weights; `--pool` overrides it for reproducing the standard-tier numbers exactly.
-    const uint64_t pool = free_vram > costs.dense_bytes + costs.embd_bytes
-                              ? free_vram - costs.dense_bytes - costs.embd_bytes
-                              : 0;
+    // resident dense weights and embedding (make_plan takes the other fixed costs out of it); `--pool` gives it
+    // directly, to reproduce the standard-tier numbers exactly (lamina::plan::vram_pool_bytes()).  A card with no
+    // room left plans nothing: 0 does not close.
+    const uint64_t pool = pool_given ? pool_given
+                          : free_vram > costs.dense_bytes + costs.embd_bytes ? free_vram - costs.dense_bytes - costs.embd_bytes
+                                                                              : 0;
     try {
-        const lamina::plan::Plan p = lamina::plan::make_plan(ctx, lamina::plan::Geometry{}, costs,
-                                                             pool ? pool : lamina::plan::vram_pool_bytes());
+        const lamina::plan::Plan p = lamina::plan::make_plan(ctx, lamina::plan::Geometry{}, costs, pool);
         std::printf("%s", lamina::plan::to_string(p).c_str());
         return 0;
     } catch (const lamina::plan::DoesNotClose& e) {
