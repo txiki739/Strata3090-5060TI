@@ -179,6 +179,12 @@ size_t body_limit() {
 // ============================================================================================ one request
 namespace {
 
+/// the API key a request sends: "Authorization: Bearer KEY", else x-api-key (Anthropic's)
+std::string given_key(const httplib::Request& req) {
+    const std::string auth = req.get_header_value("Authorization");
+    return lower(auth.substr(0, 7)) == "bearer " ? std::string(strip(auth.substr(7))) : req.get_header_value("x-api-key");
+}
+
 class Exchange {
 public:
     Exchange(Service& svc, HttpServer& server, const httplib::Request& req, httplib::Response& res)
@@ -263,10 +269,7 @@ public:
     }
 
     bool authorized() {
-        if (!truthy(svc.api_key)) return true;
-        const std::string auth = header("Authorization");
-        const std::string given = lower(auth.substr(0, 7)) == "bearer " ? std::string(strip(auth.substr(7))) : header("x-api-key");
-        if (key_matches(given, svc.api_key)) return true;
+        if (!truthy(svc.api_key) || key_matches(given_key(req), svc.api_key)) return true;
         reply(401, {{"error", {{"type", "authentication_error"}, {"message", "missing or wrong API key"}}}});
         return false;
     }
@@ -472,6 +475,13 @@ HttpServer::HttpServer(Service& svc) : svc_(svc), http_(std::make_unique<httplib
 #endif
     });
     h.set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
+        // with an API key a POST's body is read only once its key is right (here, before the body: up to 256 MiB of it)
+        if (req.method == "POST" && truthy(svc_.api_key) && !key_matches(given_key(req), svc_.api_key)) {
+            Exchange x(svc_, *this, req, res);
+            x.authorized();   // the 401, as a handler gives it
+            res.set_header("Connection", "close");   // the unread body is not drained
+            return httplib::Server::HandlerResponse::Handled;
+        }
         // without an API key every request first passes the Host check (DNS rebinding); with a key a rebinding page
         // cannot authenticate, so tunnels and proxies that pass their own name keep working
         const std::string host = req.get_header_value("Host");

@@ -551,6 +551,29 @@ class MissingCallEnd(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class KeyBeforeBody(unittest.TestCase):
+    """With an API key a POST's body is read only once its key is right: a wrong key is a 401 before the body."""
+
+    def headers_only(self, port, key):
+        s = socket.create_connection(("127.0.0.1", port))
+        s.sendall(f"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {key}\r\n"
+                  "Content-Type: application/json\r\nContent-Length: 200000000\r\n\r\n".encode())
+        s.settimeout(5)
+        try:
+            return s.recv(4096).decode("latin-1").split("\r\n")[0]
+        except socket.timeout:
+            return "no answer"
+        finally:
+            s.close()
+
+    def test_refused_before_the_body(self):
+        port, proc, log = mock_server(self, "--api-key", "k1")
+        wait_ready(port, proc, "lamina-server", log)
+        self.assertEqual(self.headers_only(port, "nope"), "HTTP/1.1 401 Unauthorized")
+        self.assertEqual(self.headers_only(port, "k1"), "no answer")   # the right key: the body is awaited
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class HttpGolden(unittest.TestCase):
     def test_answers(self):
         want = json.loads(GOLDEN.read_text(encoding="utf-8"))

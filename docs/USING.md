@@ -290,6 +290,9 @@ network, with an API key: `"api_key": "a-long-secret"` (or the `LAMINA_API_KEY` 
 comma-separated or as a list), which clients then send as their API key. The server window prints this PC's addresses;
 on Windows the firewall blocks them until lamina-server is allowed on private networks. Through a tunnel or a proxy, set the
 key first, and add the address the page is reached at to `"trusted_origins"` for the web app's settings and MCP tools.
+A request without the right key is refused before its body is read. The server has no deadline for a request's
+headers, though: a client that sends them a byte at a time holds one of its threads, so on a network you do not trust,
+put a reverse proxy in front of it.
 
 - **Browsers (CORS)**: off by default; `"cors_origins": ["https://chat.example.com"]` lets those pages call `/v1/*`.
 - **Host names**: without an API key the server answers only `Host` names it knows (localhost, IP addresses, this PC's
