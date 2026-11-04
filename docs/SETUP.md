@@ -18,8 +18,8 @@ it, and run `setup.py` with the same arguments. The models: `iq3_s` (Qwen3.8-Fla
 and `qwen38-27b-ud-q6_k_m` (Qwen3.8-27B, unsloth's UD-Q6_K_M). The engine also runs Flash-Next's other GGUF files, most of unsloth's quants and
 [Agention's Gyro-L](https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-GGUF) among them: setup downloads none of those, so copy a
 config, name the file after `--native` and give it a port of its own ([COMPARISON.md](COMPARISON.md#gyro-l-and-the-three-files-at-one-build)).
-Of unsloth's Dynamic 3.1 quants it refuses UD-IQ1_S (a layer with its gate and up in two formats) and the four with Q5_0
-experts (UD-IQ2_XS, UD-Q2_K_XL, UD-Q3_K_XL, UD-IQ4_XS), saying so at load. A quant's n-gram table can be one of
+Of unsloth's Dynamic 3.1 quants it refuses UD-IQ1_S (a layer with its gate and up in two formats), the four with Q5_0
+experts (UD-IQ2_XS, UD-Q2_K_XL, UD-Q3_K_XL, UD-IQ4_XS) and BF16, saying so at load. A quant's n-gram table can be one of
 unsloth's engram tables (BF16, Q8_0, Q5_1 or IQ4_NL): add `"--ple-gguf", "<the table's file>"` to the config's `args`,
 or rename the file over the quant's table shard as unsloth's README says.
 Without `--model`, setup builds the engine only.
