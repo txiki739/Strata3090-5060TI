@@ -891,7 +891,9 @@ void sample_tokens(const float* logits, int n_tokens, int n_vocab, const int* hi
     const unsigned shmem = (history != nullptr && history_len > 0 && p.penalty_last_n > 0)
                                ? (unsigned) ((n_vocab + 31) / 32) * sizeof(unsigned)   // the penalty bitmap
                                : 0;
-    if (p.greedy || p.temperature <= 0.0f) {
+    // a temperature under 1e-30 (or NaN) is greedy: from ~1e-37 on, logit / T overflows and the softmax turns NaN,
+    // which drew the last kept candidate; down to 1e-30 the softmax is already greedy but for exact ties
+    if (p.greedy || !(p.temperature >= 1e-30f)) {
         // Without penalties (shmem == 0: no window) on sm_90+, a cluster of CTAs per token - the same token; see
         // `sampler_greedy_cluster_kernel`.  LAMINA_ARGMAX_MULTI=0: always the one-block kernel.
         static const bool multi = [] {
