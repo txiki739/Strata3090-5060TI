@@ -16,6 +16,12 @@
 // groups (Python about 490), and patterns are compiled before validation starts. Too deep a schema or pattern is a
 // 400, too deep an answer a 502, with Python's "maximum recursion depth exceeded".
 //
+// Where Python would run on for hours, budgets stop the work: the schema's object walk (1,000,000 calls), a
+// validation's frames (5,000,000), its pattern searches (100,000,000 steps, 256 MiB of backtracking state): a 400 for the
+// schema, a 502 for an answer. One CPython quirk is not reproduced: a search whose pattern starts with a character set
+// under flags of its own, as (?a)(?u:\d), is prefiltered with the pattern's global flags (sre_compile._compile_info's
+// charset prefix), so there "١" finds no match, here it matches as the pattern says.
+//
 // Generated tables: kMetaDocs (jsonschema-specifications 2025.9.1's files, compact), kXidStart and kXidContinue
 // (str.isidentifier()'s sets), kDecimal and sre_upper's kExtended (these four from Python 3.12's unicodedata);
 // sre_extra_cases is CPython 3.12's re/_casefix.py.
