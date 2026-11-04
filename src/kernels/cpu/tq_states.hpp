@@ -9,6 +9,9 @@
 #include <cstring>
 
 namespace lamina::kernels::cpu::tq_detail {
+// internal linkage: each object (tq_cpu, tq_avx2, tq_avx512, built for their own ISAs) keeps its own copies, where one
+// inline copy the linker kept for all could be the AVX-512 object's, run on an AVX2 CPU
+namespace {
 
 inline constexpr uint32_t kTqStateMask = 0x7fffu;
 
@@ -52,4 +55,5 @@ inline uint16_t tq_ld16(const uint8_t* p) {
     return v;
 }
 
+}  // namespace
 }  // namespace lamina::kernels::cpu::tq_detail
