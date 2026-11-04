@@ -426,8 +426,9 @@ std::string LaminaEngine::sampling_keys(const json& s) {
     };
     if (auto t = num("temperature"); t && *t > 0.0) keys += " temperature=" + fr(*t);
     if (auto tp = num("top_p"); tp && *tp < 1.0) keys += " top_p=" + fr(*tp);
-    if (const json& tk = jget(s, "top_k"); is_int(tk) && tk.get<int64_t>() >= 0) {
-        // the engine's sampled path keeps at most 64 candidates: 0 ("off") and wider lists get all 64
+    if (const json& tk = jget(s, "top_k"); is_int(tk)) {
+        // the engine's sampled path keeps at most 64 candidates: 0 or -1 ("off": llama.cpp's, vLLM's) and wider lists
+        // get all 64
         const int64_t k = tk.get<int64_t>();
         keys += " top_k=" + std::to_string(k >= 1 && k <= 64 ? k : 64);
     }
@@ -487,6 +488,7 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
     // an image request takes the same sampling keys as text
     std::string head = embeddings.empty() ? "GEN " + std::to_string(max_new) + sampling_keys(sampling)
                                           : "GENI " + std::to_string(max_new) + sampling_keys(sampling) + " " + embeddings;
+    if (std::getenv("LAMINA_DEBUG") != nullptr) say("[lamina] to the engine: " + head);   // its sampling, without the ids
     std::string line = head + " ";
     for (size_t k = 0; k < ids.size(); ++k) {
         if (k) line += ',';
