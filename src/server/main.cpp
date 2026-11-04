@@ -320,6 +320,7 @@ int run(int argc, char** argv) {
     install_stop_handlers();
     if (a.shutdown_timeout && !(*a.shutdown_timeout >= 0 && *a.shutdown_timeout <= 300))
         usage_error("--shutdown-timeout must be in 0..300 seconds");
+    if (!a.config.empty()) a.config = u8_str(std::filesystem::absolute(u8_path(a.config)));   // before the change to its cwd
     json cfg = json::object();
     try {
         if (!a.config.empty()) cfg = read_config(a.config);
@@ -328,6 +329,11 @@ int run(int argc, char** argv) {
         return 1;
     }
     split_joined_args(cfg);
+    // the config's relative paths are its cwd's (itself the start directory's), some read before the change to it
+    const std::string cfg_cwd = jstr(cfg, "cwd");
+    const std::filesystem::path cfg_dir = std::filesystem::absolute(u8_path(cfg_cwd.empty() ? "." : cfg_cwd));
+    if (const std::string log = jstr(cfg, "log"); !log.empty() && !u8_path(log).is_absolute())
+        cfg["log"] = u8_str(cfg_dir / u8_path(log));   // the engine's stderr goes to it before the change, the rest after
     std::string ready_path;
     if (!a.ready_file.empty()) {
         const std::filesystem::path p = u8_path(a.ready_file);
@@ -433,7 +439,7 @@ int run(int argc, char** argv) {
                 json vcfg = cfg["vision"];   // relative paths are the config's cwd's, as for the engine
                 for (const char* k : {"exe", "mmproj", "model"})
                     if (jget(vcfg, k).is_string() && !u8_path(vcfg[k].get<std::string>()).is_absolute())
-                        vcfg[k] = u8_str(std::filesystem::absolute(u8_path(jstr(cfg, "cwd", ".")) / u8_path(vcfg[k].get<std::string>())));
+                        vcfg[k] = u8_str(cfg_dir / u8_path(vcfg[k].get<std::string>()));
                 Environment venv = groups.empty() ? vision_env(cfg) : child_env(cfg, a.offline);
                 const json& dev = jget(cfg["vision"], "cuda_device");
                 if (!groups.empty() && !dev.is_null()) {   // #408: the encoder on a card of its own
@@ -447,11 +453,10 @@ int run(int argc, char** argv) {
             const double silence = engine_silence_s(cfg);   // #481: checked before the (minutes-long) start
             effort_end = effort_end_args(cfg, *tok);        // #458
             if (effort_end) args.insert(args.end(), effort_end->begin(), effort_end->end());
-            const std::string cwd = jstr(cfg, "cwd");
-            if (!cwd.empty()) {
+            if (!cfg_cwd.empty()) {
                 std::error_code ec;
-                std::filesystem::current_path(u8_path(cwd), ec);   // the engine's relative paths are the config's cwd's
-                if (ec) throw ConfigError("\"cwd\": " + cwd + " is not a directory");
+                std::filesystem::current_path(cfg_dir, ec);   // the engine's relative paths are the config's cwd's
+                if (ec) throw ConfigError("\"cwd\": " + cfg_cwd + " is not a directory");
             }
             if (!groups.empty()) {
                 engine = start_replicas(cfg, groups, effort_end.value_or(std::vector<std::string>{}), lazy, a.offline, silence);
@@ -478,7 +483,7 @@ int run(int argc, char** argv) {
     }
     if (const std::string file = jstr(cfg, "chat_template_file"); !file.empty()) {   // in place of the GGUF's
         std::filesystem::path path = u8_path(file);
-        if (!path.is_absolute()) path = u8_path(jstr(cfg, "cwd", ".")) / path;
+        if (!path.is_absolute()) path = cfg_dir / path;
         std::ifstream f(path, std::ios::binary);
         if (!f) {
             say_err("[lamina] config \"chat_template_file\": cannot read " + u8_str(path));
@@ -522,7 +527,7 @@ int run(int argc, char** argv) {
             json icfg = cfg["images"];
             for (const char* k : {"exe", "diffusion_model", "vae", "llm", "out_dir"})
                 if (jget(icfg, k).is_string() && !u8_path(icfg[k].get<std::string>()).is_absolute())
-                    icfg[k] = u8_str(std::filesystem::absolute(u8_path(jstr(cfg, "cwd", ".")) / u8_path(icfg[k].get<std::string>())));
+                    icfg[k] = u8_str(cfg_dir / u8_path(icfg[k].get<std::string>()));
             svc.images = std::make_shared<images::ImageGen>(icfg, jstr(cfg, "log"));
             const std::vector<std::string> gone = svc.images->missing();
             if (!gone.empty())
