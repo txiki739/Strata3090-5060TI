@@ -1031,7 +1031,8 @@ std::string OutputParser::follower(std::string_view after) const {
     if (starts_with(after, kParamStart)) {
         const size_t gt = after.find('>');
         if (gt == std::string_view::npos) return after.find('\n') == std::string_view::npos ? "wait" : "text";
-        return schemas_.contains(std::string(after.substr(kParamStart.size(), gt - kParamStart.size()))) ? "param" : "text";
+        return schemas_.contains(std::string(strip(after.substr(kParamStart.size(), gt - kParamStart.size())))) ? "param"
+                                                                                                              : "text";
     }
     if (starts_with(after, "{")) return schemas_.empty() ? "text" : "json";
     if (starts_with(after, "```") || (!after.empty() && starts_with("```", after))) {
@@ -1053,8 +1054,8 @@ std::pair<long, bool> OutputParser::bare_opener() {
     while (p != std::string::npos) {
         if (ok_at(p)) {
             const size_t gt = buf_.find('>', p);
-            const std::string name = buf_.substr(p + kFuncStart.size(),
-                                                 (gt == std::string::npos ? buf_.size() : gt) - p - kFuncStart.size());
+            const std::string name(strip(std::string_view(buf_).substr(
+                p + kFuncStart.size(), (gt == std::string::npos ? buf_.size() : gt) - p - kFuncStart.size())));
             if (gt == std::string::npos && !contains_space(name)) return {(long) p, false};
             if (gt != std::string::npos && schemas_.contains(name)) return {(long) p, true};
         }
@@ -1185,7 +1186,7 @@ std::vector<Event> OutputParser::scan() {
             const size_t b = a != std::string_view::npos ? rest.find('>', a + 10) : std::string_view::npos;
             if (b == std::string_view::npos) return out;
             scall_ = std::make_shared<ToolCall>();
-            scall_->name = std::string(rest.substr(a + 10, b - a - 10));
+            scall_->name = std::string(strip(rest.substr(a + 10, b - a - 10)));   // as parse_tool_call reads it
             const json& props = jget(jget(jget(schemas_, scall_->name), "parameters"), "properties");
             sdeclared_ = json::object();
             if (props.is_object())

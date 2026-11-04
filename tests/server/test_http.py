@@ -593,6 +593,23 @@ class MissingCallEnd(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class StreamedToolName(unittest.TestCase):
+    """A call's name is stripped while it streams as it is in the finished call: `<function=get_weather >` is
+    get_weather, whose declared string parameter streams as a string."""
+
+    def test_name(self):
+        text = "<tool_call>\n<function=get_weather >\n<parameter=city>\n123\n</parameter>\n</function>\n</tool_call>"
+        port, proc, log = mock_server(self, "--script", "</think>\n\n" + text)
+        wait_ready(port, proc, "lamina-server", log)
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(tools=TOOLS, stream=True), {})
+        pieces = [tc for e in parse_body(ctype, raw) if isinstance(e.get("data"), dict)
+                  for tc in (e["data"]["choices"][0]["delta"].get("tool_calls") or [])]
+        names = [p["function"]["name"] for p in pieces if p.get("function", {}).get("name")]
+        args = "".join(p.get("function", {}).get("arguments") or "" for p in pieces)
+        self.assertEqual((status, names, json.loads(args)), (200, ["get_weather"], {"city": "123"}), raw)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class KeyBeforeBody(unittest.TestCase):
     """With an API key a POST's body is read only once its key is right: a wrong key is a 401 before the body."""
 
