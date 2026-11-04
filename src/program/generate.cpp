@@ -3228,14 +3228,19 @@ int lamina::program::run(int argc, char** argv) {
         }
         at_exit.undo.push_back([d_hist] { cudaFree(d_hist); });
         {
-            // what the server's Monitor tab shows
+            // what the server's Monitor tab shows; the experts in VRAM are every GPU's, as its VRAM figures
             size_t free_b = 0, total_b = 0;
             cudaMemGetInfo(&free_b, &total_b);
+            int64_t vram_slots = xcache.slots(), vram_bytes = xcache.bytes();
+            for (int t = 0; t < n_tiers; ++t) {
+                vram_slots += tiers[(size_t) t].gpu.cache().slots();
+                vram_bytes += tiers[(size_t) t].gpu.cache().bytes();
+            }
             serve_print("INFO context=%lld kv=%s kv_resident=0 expert_slots=%lld expert_cache_mib=%lld spec=%d "
                         "mtp_max=%d lookup=%d vram_free_mib=%lld arena_mib=%lld pool_workers=%d pcie_frac=%.2f "
                         "spec_min_p=%.2f second_gpu=%d tail_role_token=%lld engine=" LAMINA_VERSION " fork=lamina\n",
-                        (long long) o.max_context, o.kv.c_str(), (long long) xcache.slots(),
-                        (long long) (xcache.bytes() >> 20), o.spec, o.spec, o.spec_lookup, (long long) (free_b >> 20),
+                        (long long) o.max_context, o.kv.c_str(), (long long) vram_slots,
+                        (long long) (vram_bytes >> 20), o.spec, o.spec, o.spec_lookup, (long long) (free_b >> 20),
                         (long long) (lamina::kernels::cpu::expert_layout().total >> 20), pool.workers(), o.pcie_frac,
                         o.spec_min_p, o.second_gpu, (long long) o.tail_role_token);
         }
