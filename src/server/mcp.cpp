@@ -515,12 +515,14 @@ json HttpTransport::Impl::exchange(const json& msg, long long rid, double timeou
     EventReader events;
     events.rid = rid;
     std::string body;
+    // `timeout` bounds each read: a stream's keep-alive comments would hold the POST past its call's end without this
+    const double until = mono() + timeout;
     const HttpReply r = http_request("POST", url, request_headers(), py_dumps(msg, false), timeout, 0,
                                      [&](std::string_view chunk) {
                                          body.append(chunk);
                                          // a notification's answer is not read; a stream may stay open after the
                                          // event that answers
-                                         return answer && !events.feed(chunk);
+                                         return answer && !events.feed(chunk) && mono() < until;
                                      });
     if (r.status < 200 || r.status >= 300) {
         const std::string detail = first_chars(decode_replace(body), 300);
