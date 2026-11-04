@@ -56,6 +56,9 @@ public:
     void gather_dev(const int32_t* tokens, int64_t n_tok, float* out, void* stream) const;
     uint64_t bytes() const { return bytes_; }
     int type() const { return type_; }
+    /// in mapped, portable host memory, which every GPU reads (false: the main GPU's VRAM, where the pinned
+    /// allocation failed)
+    bool mapped() const { return host_ != nullptr; }
 
 private:
     void* host_ = nullptr;

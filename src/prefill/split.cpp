@@ -379,7 +379,8 @@ bool PromptSplit::init(Prefill& first, const core::WeightTable& wt, const core::
         err = "--prompt-split: the second GPU's first layer must be 2.." + std::to_string(g.n_layers - 1);
         return false;
     }
-    if (mtp != nullptr && core::native_embed() == nullptr) {
+    // the second stage gathers the draft layer's token rows on its own GPU: from VRAM it could not
+    if (mtp != nullptr && (core::native_embed() == nullptr || !core::native_embed()->mapped())) {
         err = "--prompt-split: the draft layer's prompt K/V need the token embedding in mapped host memory";
         return false;
     }
