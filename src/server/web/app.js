@@ -1047,9 +1047,11 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("drawe
 // ------------------------------------------------------------------ start
 setBusy(false);
 renderChat();
-const startQuestion = new URLSearchParams(location.search).get("q");   // /?q=... starts a chat (a shortcut)
+// /?q=... puts a question in the input (a shortcut), never sends it: any page can open this address, and a sent
+// question would run with this server's MCP tools and the saved chat
+const startQuestion = new URLSearchParams(location.search).get("q");
 if (startQuestion) history.replaceState(null, "", location.pathname + location.hash);
-loadHealth().then(loadMcp).then(() => { if (startQuestion) { $("input").value = startQuestion; send(); } });
+loadHealth().then(loadMcp).then(() => { if (startQuestion) { $("input").value = startQuestion; autosize(); $("input").focus(); } });
 showTab(location.hash.slice(1) || "chat");
 poll();
 

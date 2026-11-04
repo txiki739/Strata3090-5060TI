@@ -739,6 +739,9 @@ void do_get(Service& svc, HttpServer& server, const httplib::Request& req, httpl
         return;
     }
     if (path.empty() || (path == "/api-monitor" && svc.api_monitor)) {
+        // never in another site's frame: the pages act with this server's rights (its MCP tools)
+        res.set_header("Content-Security-Policy", "frame-ancestors 'none'");
+        res.set_header("X-Frame-Options", "DENY");
         serve_asset(x, path.empty() ? "index.html" : "monitor.html", "text/html; charset=utf-8", nullptr);
         return;
     }
