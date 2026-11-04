@@ -1548,14 +1548,18 @@ int lamina::program::run(int argc, char** argv) {
     // --prompt-split's second stage runs rope kernels on the second GPU: a copy of the table there (setup_prompt_path)
     int32_t* d_mrope2 = nullptr;
     int mrope2_dev = -1;
-    auto mrope_upload = [&]() -> bool {   // the host table to each GPU's copy
+    // the host table to each GPU's copy, landed when it returns: a pageable copy may return before its DMA lands, and
+    // the rope kernels read the table from non-blocking streams
+    auto mrope_upload = [&]() -> bool {
         const size_t bytes = mrope_host.size() * sizeof(int32_t);
-        bool ok = cudaMemcpy(d_mrope, mrope_host.data(), bytes, cudaMemcpyHostToDevice) == cudaSuccess;
+        bool ok = cudaMemcpy(d_mrope, mrope_host.data(), bytes, cudaMemcpyHostToDevice) == cudaSuccess &&
+                  cudaDeviceSynchronize() == cudaSuccess;
         if (ok && d_mrope2 != nullptr) {
             int cur = 0;
             cudaGetDevice(&cur);
             cudaSetDevice(mrope2_dev);
-            ok = cudaMemcpy(d_mrope2, mrope_host.data(), bytes, cudaMemcpyHostToDevice) == cudaSuccess;
+            ok = cudaMemcpy(d_mrope2, mrope_host.data(), bytes, cudaMemcpyHostToDevice) == cudaSuccess &&
+                 cudaDeviceSynchronize() == cudaSuccess;
             cudaSetDevice(cur);
         }
         return ok;
@@ -2759,6 +2763,9 @@ int lamina::program::run(int argc, char** argv) {
             int64_t cells = 0;           // what every K/V pool holds now
             std::vector<lamina::core::VmmChunk> spare;   // out of the cache, not (yet) in the K/V
             int64_t grows = 0, trims = 0, fresh = 0, evicted = 0, refilled = 0;
+            ~KvGrow() {   // the engine's end: they belong to no range (the in-process engine starts again in this process)
+                for (const lamina::core::VmmChunk h : spare) lamina::core::vmm_chunk_free(h);
+            }
         } kvg;
         int kv_short = 0;   // requests in a row far shorter than the K/V holds (kvg_trim after two)
         {
