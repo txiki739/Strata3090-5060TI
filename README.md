@@ -32,6 +32,11 @@ own output. Its speeds against llama.cpp and Strata on one PC are in [docs/COMPA
   | Qwen3.6-35B-A3B, unsloth's UD-Q4_K_XL | ~22 GB on one GPU, ~2 GB split over GPUs that hold it | ~24 GB |
   | Qwen3.8-27B, unsloth's UD-Q6_K_M | ~2 GB | ~24 GB |
 
+  The engine also runs unsloth's other Flash-Next quants, all but UD-IQ1_S and BF16: UD-IQ1_M, UD-Q2_0, UD-IQ2_XS,
+  UD-Q2_K_XL, UD-IQ3_XXS, UD-Q3_K_XL, UD-IQ4_XS, UD-Q5_K_XL, UD-Q6_K_XL and Q8_0, whose experts take ~35 GB (UD-IQ1_M)
+  to ~128 GB (Q8_0) of RAM, and [Agention's Gyro-L](https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-GGUF).
+  Setup downloads none of them: [docs/SETUP.md](docs/SETUP.md) says how to run one.
+
 - **An SSD**: Flash-Next reads a 28.8 GB table of per-layer embeddings from the model file at every token.
 - **A 64-bit x86 CPU with AVX2** (AVX-512 is used when it is there). The CPU computes the experts no GPU holds, so its
   cores and the RAM's bandwidth set much of the speed.
