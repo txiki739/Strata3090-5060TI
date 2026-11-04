@@ -64,10 +64,10 @@ bool cpu_gather_fast_here();
 /// LAMINA_FORCE_ISA, and not an older-CPU build (LAMINA_ISA_FLOOR, which stays on its floor and AVX2).
 /// LAMINA_NO_AVXVNNI=1 answers no.
 bool cpu_avxvnni_ok();
-/// Whether a native pack's layer of this ggml type runs on Lamina's own Q2_0 kernels (AVX2 / AVX-512).  On a
-/// CPU without AVX2 (a native, non-portable build: ggml-cpu compiled for this CPU's SSE) a Q2_0 layer takes
-/// ggml-cpu's own Q2_0 vec_dot like every other native type: slower, but it runs.
-inline bool q2_native_kernels(int type) { return type == 42 && cpu_avx2_ok(); }
+/// Whether a native pack's layer of this ggml type runs on Lamina's own Q2_0 kernels (q2_rows_any's AVX-512, AVX2 and
+/// AVX rungs).  On a CPU without AVX (an older-CPU build: ggml-cpu compiled for its SSE; LAMINA_FORCE_ISA=sse) a Q2_0
+/// layer takes ggml-cpu's own Q2_0 vec_dot like every other native type: slower, but it runs.
+inline bool q2_native_kernels(int type) { return type == 42 && cpu_avx1_ok(); }
 /// The CPU's brand string (CPUID 0x80000002..4), for messages; "unknown" when it has none.
 std::string cpu_name();
 /// Q2_0 GGUF rows / activation quantizer on the kernels this CPU has.

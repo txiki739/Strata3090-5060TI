@@ -224,7 +224,7 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
         return xk != nullptr ? xk + (size_t) t * (size_t) d.plan->xk_stride
                              : d.nact_multi.data() + (size_t) t * kNativeActBytes;
     };
-    if (lay.fmt[(size_t) d.layers].gu_type == 42)   // a Q2_0 pack: the Q2_0 kernels' activations
+    if (q2_native_kernels(lay.fmt[(size_t) d.layers].gu_type))   // a Q2_0 pack: the Q2_0 kernels' activations
         for (int64_t t = 0; t < n_tok; ++t) act_quant_any(x_f + (size_t) t * H, H, d.act_multi[(size_t) t]);
     else if (xk == nullptr)
         for (int64_t t = 0; t < n_tok; ++t)

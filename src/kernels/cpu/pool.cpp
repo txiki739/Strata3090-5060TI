@@ -450,7 +450,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         const auto b = std::chrono::steady_clock::now();
         for (int e = 0; e < nb; ++e)
             for (int t = 0; t < mjobs_[e].nt; ++t)
-                if (f.d_type == 42) act_quant_any(split_multi_[(size_t) e].ff[t], (int) f.n_ff, split_multi_[(size_t) e].a2[t]);
+                if (q2_native_kernels(f.d_type)) act_quant_any(split_multi_[(size_t) e].ff[t], (int) f.n_ff, split_multi_[(size_t) e].a2[t]);
                 else native_quant_h(f, split_multi_[(size_t) e].ff[t], split_multi_[(size_t) e].hq[t]);
         const auto c = std::chrono::steady_clock::now();
         mrows_ = (int64_t) nb * f.n_embd;
@@ -467,7 +467,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
 
 void ExpertPool::native_gu_part(int e, int r0, int r1) {
     SplitBufMulti& sb = split_multi_[(size_t) e];
-    if (nfmt_->gu_type == 42) {
+    if (q2_native_kernels(nfmt_->gu_type)) {
         // a native Q2_0 pack: gate and up rows on the Q2_0 kernels, then SwiGLU
         thread_local float gbuf[MAXT][FF], ubuf[MAXT][FF];
         float* gp[MAXT];
@@ -489,13 +489,13 @@ void ExpertPool::native_gu_part(int e, int r0, int r1) {
 void ExpertPool::native_quant_part(int e) {
     SplitBufMulti& sb = split_multi_[(size_t) e];
     for (int t = 0; t < mjobs_[e].nt; ++t)
-        if (nfmt_->d_type == 42) act_quant_any(sb.ff[t], (int) nfmt_->n_ff, sb.a2[t]);
+        if (q2_native_kernels(nfmt_->d_type)) act_quant_any(sb.ff[t], (int) nfmt_->n_ff, sb.a2[t]);
         else native_quant_h(*nfmt_, sb.ff[t], sb.hq[t]);
 }
 
 void ExpertPool::native_down_part(int e, int r0, int r1) {
     SplitBufMulti& sb = split_multi_[(size_t) e];
-    if (nfmt_->d_type == 42) {
+    if (q2_native_kernels(nfmt_->d_type)) {
         // Q2_0 down (most IQ layers): the AVX-512 kernel, ggml-cpu has only a scalar one on x86
         const ActQ* a2[MAXT];
         for (int t = 0; t < mjobs_[e].nt; ++t) a2[t] = &sb.a2[t];
