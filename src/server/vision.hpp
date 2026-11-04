@@ -19,8 +19,11 @@
 
 namespace lamina {
 
-/// an image URL is read up to this much (the web app attaches pictures of up to 20 MB)
-inline constexpr size_t kImageUrlMax = 32u << 20;
+/// an image URL or file is read up to this much (the web app attaches pictures of up to 20 MB)
+inline constexpr size_t kImageBytesMax = 32u << 20;
+/// the pixels a picture the server decodes may have: Pillow's limit (twice Image.MAX_IMAGE_PIXELS), where it
+/// refuses a decompression bomb
+inline constexpr uint64_t kImagePixelsMax = 178956970;
 
 class Vision {
 public:
@@ -35,12 +38,13 @@ public:
     /// starts it again after an unload, or after it died; the cache is kept
     void restart();
     void close();
-    /// a picture's bytes from a data: URL, an http(s) URL or a local file (std::invalid_argument when it cannot)
+    /// a picture's bytes from a data: URL, an http(s) URL or a local file, a URL's or file's at most kImageBytesMax
+    /// (std::invalid_argument when it cannot)
     static std::string load(const std::string& source);
-    /// an image URL's bytes, at most kImageUrlMax (std::invalid_argument when it cannot be read)
+    /// an image URL's bytes, at most kImageBytesMax (std::invalid_argument when it cannot be read)
     static std::string download(const std::string& url);
     /// the formats lamina-vision's decoder reads pass through; any other is converted, a JPEG stored turned (its EXIF
-    /// Orientation) is turned upright (std::invalid_argument when it cannot be read)
+    /// Orientation) is turned upright (std::invalid_argument when it cannot be read, or has over kImagePixelsMax)
     static std::string normalize(const std::string& data);
     /// encode() for every picture of one request: the files of its earlier pictures are never evicted for a later
     /// one (#1072); a request whose client left encodes no more (#1999: ClientGone)

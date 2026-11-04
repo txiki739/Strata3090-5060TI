@@ -133,6 +133,12 @@ int exif_orientation(const std::string& d) {
     return 1;
 }
 
+/// a picture over kImagePixelsMax, as Pillow words it
+std::string too_many_pixels(uint64_t w, uint64_t h) {
+    return "Image size (" + std::to_string(w * h) + " pixels) exceeds limit of " + std::to_string(kImagePixelsMax) +
+           " pixels, could be decompression bomb DOS attack.";
+}
+
 struct Pixels {
     int w = 0, h = 0;
     std::vector<unsigned char> rgb;   // 3 bytes a pixel, rows top to bottom
@@ -224,13 +230,14 @@ std::optional<Pixels> wic_decode(const std::string& data, std::string& why) {
         SUCCEEDED(factory->CreateStream(&stream)) &&
         SUCCEEDED(stream->InitializeFromMemory((BYTE*) data.data(), (DWORD) data.size())) &&
         SUCCEEDED(factory->CreateDecoderFromStream(stream, nullptr, WICDecodeMetadataCacheOnDemand, &decoder)) &&
-        SUCCEEDED(decoder->GetFrame(0, &frame)) &&
+        SUCCEEDED(decoder->GetFrame(0, &frame)) && SUCCEEDED(frame->GetSize(&w, &h)) && w > 0 && h > 0 &&
+        (uint64_t) w * h <= kImagePixelsMax &&
         SUCCEEDED(WICConvertBitmapSource(GUID_WICPixelFormat32bppRGBA, frame, &rgba)) && SUCCEEDED(rgba->GetSize(&w, &h)) &&
         w > 0 && h > 0) {
         std::vector<unsigned char> px((size_t) w * h * 4);
         if (SUCCEEDED(rgba->CopyPixels(nullptr, w * 4, (UINT) px.size(), px.data()))) out = on_white(px.data(), (int) w, (int) h);
     }
-    if (!out) why = "not a format this computer's image codecs read";
+    if (!out) why = (uint64_t) w * h > kImagePixelsMax ? too_many_pixels(w, h) : "not a format this computer's image codecs read";
     release();
     return out;
 }
@@ -476,6 +483,8 @@ std::string Vision::load(const std::string& source) {
                                     "//host/share, file://host/...) are not read");
     std::error_code ec;
     if (!path.empty() && fs::is_regular_file(u8_path(path), ec)) {
+        if (const uintmax_t size = fs::file_size(u8_path(path), ec); !ec && size > kImageBytesMax)
+            throw std::invalid_argument("the image file " + path + " is over " + std::to_string(kImageBytesMax >> 20) + " MiB");
         try {
             return read_file(u8_path(path));
         } catch (const std::exception& e) {
@@ -486,11 +495,11 @@ std::string Vision::load(const std::string& source) {
 }
 
 std::string Vision::download(const std::string& url) {
-    // at most kImageUrlMax: a huge or endless response is not read whole; one that cannot be read is a 400 that says so
-    const std::string too_big = "the image URL's file is over " + std::to_string(kImageUrlMax >> 20) + " MiB";
+    // at most kImageBytesMax: a huge or endless response is not read whole; one that cannot be read is a 400 that says so
+    const std::string too_big = "the image URL's file is over " + std::to_string(kImageBytesMax >> 20) + " MiB";
     HttpReply r;
     try {
-        r = http_request("GET", url, {{"User-Agent", "lamina"}}, "", 60, kImageUrlMax);
+        r = http_request("GET", url, {{"User-Agent", "lamina"}}, "", 60, kImageBytesMax);
     } catch (const HttpError& e) {
         if (std::string(e.what()).find("larger than") != std::string::npos) throw std::invalid_argument(too_big);
         throw std::invalid_argument(std::string("the image URL could not be read: ") + e.what());
@@ -498,16 +507,21 @@ std::string Vision::download(const std::string& url) {
     if (r.status >= 400)
         throw std::invalid_argument("the image URL could not be read: HTTP Error " + std::to_string(r.status) + ": " + r.reason);
     const std::string size = r.header("content-length");
-    if (!size.empty() && std::all_of(size.begin(), size.end(), ::isdigit) && std::stoull(size) > kImageUrlMax)
+    if (!size.empty() && std::all_of(size.begin(), size.end(), ::isdigit) && std::stoull(size) > kImageBytesMax)
         throw std::invalid_argument(too_big);
     return r.body;
 }
 
 std::string Vision::normalize(const std::string& data) {
+    // a header over the limit is refused before a decoder holds its pixels: this process's, or the encoder's for the
+    // formats that pass through
+    int w = 0, h = 0, n = 0;
+    if (stbi_info_from_memory((const stbi_uc*) data.data(), (int) data.size(), &w, &h, &n) &&
+        (uint64_t) w * (uint64_t) h > kImagePixelsMax)
+        throw std::invalid_argument("the image could not be read (" + too_many_pixels((uint64_t) w, (uint64_t) h) + ")");
     const bool jpeg = is_jpeg(data);
     const int orientation = jpeg ? exif_orientation(data) : 1;
     if ((jpeg && (orientation == 0 || orientation == 1 || orientation > 8)) || passes(data)) return data;
-    int w = 0, h = 0, n = 0;
     unsigned char* px = stbi_load_from_memory((const stbi_uc*) data.data(), (int) data.size(), &w, &h, &n, 4);
     std::optional<Pixels> p;
     if (px != nullptr) {
