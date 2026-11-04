@@ -501,7 +501,6 @@ void Service::run_inner(const std::vector<int32_t>& ids, bool thinking, const js
     json& st = par ? own_st : status;
     std::deque<std::pair<double, int64_t>>& rt = par ? own_rate : rate;
     const std::string request_id = random_hex(12);
-    cancel.request_id = request_id;
     const std::optional<double> deadline = queue_timeout_s ? std::optional<double>(mono_s() + *queue_timeout_s) : std::nullopt;
     cancel.queue_deadline = deadline;   // with batch slots the engine waits for its turn, and keeps the deadline
     cancel.queue_started = [this, request_id] {
@@ -518,6 +517,7 @@ void Service::run_inner(const std::vector<int32_t>& ids, bool thinking, const js
     {
         std::lock_guard<std::mutex> lk(status_mu);
         status["queued"] = jint(status["queued"]) + 1;
+        cancel.request_id = request_id;   // (the client watch reads it under the lock)
         terminal_requests[request_id] = {{"id", request_id}, {"state", "queued"}, {"queued_at", now_s()},
                                          {"admitted_at", nullptr}, {"prompt_tokens", ids.size()}};
         active_cancels.insert(&cancel);
