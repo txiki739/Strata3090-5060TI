@@ -50,8 +50,11 @@ void apply_engine_env(const json& cfg, bool offline);
 /// a child engine's environment (a replica): this process's with the config's "gpu", "env", "lib_dirs" and the offline
 /// policy
 Environment child_env(const json& cfg, bool offline);
-/// the image encoder's environment: this process's, on its own card when the vision section names "cuda_device"
+/// the image encoder's environment: this process's with the config's "lib_dirs", on its own card when the vision
+/// section names "cuda_device"
 Environment vision_env(const json& cfg);
+/// the config's "lib_dirs" (the existing ones) before env's library search path: LD_LIBRARY_PATH, PATH on Windows
+void prepend_lib_dirs(const json& cfg, Environment& env);
 /// the variables every child gets under --offline
 const std::vector<std::pair<std::string, std::string>>& offline_env();
 /// why this config cannot be strictly offline (empty: it can)

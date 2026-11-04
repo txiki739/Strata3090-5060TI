@@ -398,6 +398,11 @@ Environment child_env(const json& cfg, bool offline) {
         for (auto it = extra.begin(); it != extra.end(); ++it) env[it.key()] = arg_str(it.value());
     if (offline)
         for (const auto& [k, v] : offline_env()) env[k] = v;
+    prepend_lib_dirs(cfg, env);
+    return env;
+}
+
+void prepend_lib_dirs(const json& cfg, Environment& env) {
     std::string dirs;
     const json& lib = jget(cfg, "lib_dirs");
     if (lib.is_array())
@@ -421,11 +426,11 @@ Environment child_env(const json& cfg, bool offline) {
         const auto it = env.find(var);
         env[var] = it == env.end() || it->second.empty() ? dirs : dirs + sep + it->second;
     }
-    return env;
 }
 
 Environment vision_env(const json& cfg) {
     Environment env = environment();
+    prepend_lib_dirs(cfg, env);   // a CUDA encoder's runtime (its RUNPATH is its own folder)
     const json& dev = jget(jget(cfg, "vision"), "cuda_device");
     if (dev.is_null()) return env;
     env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID";   // #408: the encoder on a card of its own
