@@ -28,8 +28,14 @@ def stream(url, messages, think, max_tokens):
             line = raw.decode("utf-8", "replace").strip()
             if not line.startswith("data: ") or line == "data: [DONE]":
                 continue
-            d = json.loads(line[6:])["choices"][0]["delta"]
-            yield d.get("reasoning_content") or "", d.get("content") or ""
+            d = json.loads(line[6:])
+            if "error" in d:   # the server ended the answer with an error event
+                e = d["error"]
+                raise RuntimeError(e.get("message") if isinstance(e, dict) else str(e))
+            choices = d.get("choices") or []   # (a usage chunk has none)
+            if choices:
+                delta = choices[0].get("delta") or {}
+                yield delta.get("reasoning_content") or "", delta.get("content") or ""
 
 
 def main() -> int:
@@ -105,6 +111,10 @@ def main() -> int:
                 print(reset, end="")
         except OSError as e:
             print(f"\n(could not reach the server at {url}: {e})")
+            messages.pop()
+            continue
+        except RuntimeError as e:
+            print(f"{reset}\n(the server ended the answer: {e})")
             messages.pop()
             continue
         dt = time.time() - t0
