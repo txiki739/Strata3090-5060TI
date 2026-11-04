@@ -60,8 +60,8 @@ public:
     /// ahead go in pieces as a second GPU's do, into an area sized as a second GPU's.  Before init.
     void set_fast_link(bool on);
     /// The buffers for chunks of up to `chunk` tokens, carved from `region` (`bytes` long, e.g. lent cache slots), or
-    /// with a null region allocated for `max_chunk` tokens (once).  Before the first layer of every prompt that
-    /// uses a region.  `area`: device memory for the prefetched blobs; null: what the region has left.
+    /// with a null region from its own allocation (made once, for `max_chunk` tokens).  Before the first layer of
+    /// every prompt that uses a region, and of the next one.  `area`: device memory for the prefetched blobs; null: what the region has left.
     bool bind(void* region, uint64_t bytes, int64_t chunk, std::string& err, void* area = nullptr,
               uint64_t area_bytes = 0);
     /// Bytes of prefetch area that hold a layer's streamed experts: the largest layer's experts that neither its

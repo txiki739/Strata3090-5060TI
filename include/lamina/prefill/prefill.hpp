@@ -83,8 +83,8 @@ public:
     /// The same with the area its experts are prefetched into (without a second GPU), for the residency as it is now.
     uint64_t bytes_for(int64_t chunk) const;
     /// The buffers for chunks of up to `chunk` tokens, carved from `region` (`bytes` long: lent expert-cache
-    /// slots; what is left over takes prefetched experts), or with a null region allocated for the longest chunk
-    /// (once).  Before the first chunk of every prompt that uses a region.
+    /// slots; what is left over takes prefetched experts), or with a null region from its own allocation (made once,
+    /// for the longest chunk).  Before the first chunk of every prompt that uses a region, and of the next one.
     bool bind(void* region, uint64_t bytes, int64_t chunk, std::string& err);
 
     /// The order the experts a layer streams are copied ahead in: per layer (n_layers x n_expert) its experts, the

@@ -959,18 +959,23 @@ struct PromptBuffers {
         if (lend) {
             loan.plan(need);
             loan.lend();
-            if (!prefill->bind(loan.base(), loan.bytes(), chunk, err)) return false;
         }
+        // no loan (none, or not this prompt's bytes): the runner's own buffers, carved for this chunk as a loan is,
+        // so neither the last loan's slots, refilled since, nor another chunk size stays bound
+        if (!prefill->bind(loan.base(), loan.bytes(), chunk, err)) return false;
+        if (offload == nullptr) return true;
+        uint64_t r2 = 0;
+        bool with_split = false;
         if (lend2) {
-            const uint64_t r2 = (need2 + 255) & ~255ull;
-            const bool with_split = split_need > 0 && loan2.plan(r2 + split_need);
+            r2 = (need2 + 255) & ~255ull;
+            with_split = split_need > 0 && loan2.plan(r2 + split_need);
             if (!with_split) loan2.plan(need2);
             loan2.lend();
-            if (!offload->bind(loan2.base(), with_split ? r2 : loan2.bytes(), chunk, err)) return false;
-            if (with_split) {
-                split_region = (uint8_t*) loan2.base() + r2;
-                split_bytes = loan2.bytes() - r2;
-            }
+        }
+        if (!offload->bind(loan2.base(), with_split ? r2 : loan2.bytes(), chunk, err)) return false;
+        if (with_split) {
+            split_region = (uint8_t*) loan2.base() + r2;
+            split_bytes = loan2.bytes() - r2;
         }
         return true;
     }

@@ -93,6 +93,7 @@ struct ExpertRunner::Impl {
     Gemm gemm;
     std::unique_ptr<mmq::Context> mmq_ctx;   // the MMQ layers' launches (null: none)
     void* owned = nullptr;   // the buffers' own allocation (no region)
+    uint64_t owned_bytes = 0;
     uint16_t *input = nullptr, *xs = nullptr, *hh = nullptr, *dq_gu = nullptr, *dq_d = nullptr;
     float *sum = nullptr, *w = nullptr, *gu = nullptr, *d = nullptr;
     int32_t* rows_src = nullptr;
@@ -243,16 +244,18 @@ bool ExpertRunner::bind(void* region, uint64_t bytes, int64_t chunk, std::string
     Impl& m = *impl_;
     core::DeviceScope on(m.dev, m.main, m.remote);
     m.pre_layer = -1;
-    if (region == nullptr) {
-        if (m.owned != nullptr) return true;
-        chunk = m.max_chunk;
-        bytes = bytes_needed(chunk, m.n_expert, m.remote, m.streams);
-        if (cudaMalloc(&m.owned, bytes) != cudaSuccess) {
-            m.owned = nullptr;
-            err = "prompt experts: " + std::to_string(bytes >> 20) + " MiB of device buffers";
-            return false;
+    if (region == nullptr) {   // its own buffers, allocated once for the longest chunk, carved for this one
+        if (m.owned == nullptr) {
+            const uint64_t need = bytes_needed(m.max_chunk, m.n_expert, m.remote, m.streams);
+            if (cudaMalloc(&m.owned, need) != cudaSuccess) {
+                m.owned = nullptr;
+                err = "prompt experts: " + std::to_string(need >> 20) + " MiB of device buffers";
+                return false;
+            }
+            m.owned_bytes = need;
         }
         region = m.owned;
+        bytes = m.owned_bytes;
     }
     if (chunk > m.max_chunk) {
         err = "prompt experts: a chunk longer than the one they were set up for";

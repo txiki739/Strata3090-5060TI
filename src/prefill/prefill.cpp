@@ -187,6 +187,7 @@ struct Prefill::Impl {
     Gemm gemm;
     std::unique_ptr<mmq::Context> mmq;   // the dense projections of 2048+ rows (null: no MMQ in this build)
     void* owned = nullptr;   // the buffers' own allocation (no region)
+    uint64_t owned_bytes = 0;
     Bufs b;
     std::vector<std::pair<const void*, const uint16_t*>> w16_have;   // this layer's dequantized weights
     int64_t w16_used = 0;
@@ -327,16 +328,18 @@ uint64_t Prefill::bytes_for(int64_t chunk) const {
 
 bool Prefill::bind(void* region, uint64_t bytes, int64_t chunk, std::string& err) {
     Impl& m = *impl_;
-    if (region == nullptr) {
-        if (m.owned != nullptr) return true;   // allocated once, for the longest chunk
-        chunk = m.max_chunk;
-        bytes = bytes_needed(*m.g, *m.ss, chunk, m.offload != nullptr);
-        if (cudaMalloc(&m.owned, bytes) != cudaSuccess) {
-            m.owned = nullptr;
-            err = "prefill: " + std::to_string(bytes >> 20) + " MiB of device buffers";
-            return false;
+    if (region == nullptr) {   // its own buffers, allocated once for the longest chunk, carved for this one
+        if (m.owned == nullptr) {
+            const uint64_t need = bytes_needed(*m.g, *m.ss, m.max_chunk, m.offload != nullptr);
+            if (cudaMalloc(&m.owned, need) != cudaSuccess) {
+                m.owned = nullptr;
+                err = "prefill: " + std::to_string(need >> 20) + " MiB of device buffers";
+                return false;
+            }
+            m.owned_bytes = need;
         }
         region = m.owned;
+        bytes = m.owned_bytes;
     }
     if (chunk <= 0 || chunk > m.max_chunk) {
         err = "prefill: a chunk of " + std::to_string(chunk) + " tokens (set up for " + std::to_string(m.max_chunk) + ")";
