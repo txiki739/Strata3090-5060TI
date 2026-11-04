@@ -205,6 +205,7 @@ struct Options {
     double prompt_split = 0.0;
     /// The elastic K/V (--kv-grow, LAMINA_KV_GROW=1): the K/V takes VRAM as the context grows, the expert cache the rest.
     bool kv_grow = false;
+    bool no_kv_grow = false;   ///< --no-kv-grow: off whatever LAMINA_KV_GROW says
     bool hc_q8 = false;   ///< the hyper-connection matrices only in 8 bits (core::HcQ8)
     double head_split = 0.45;                ///< the second GPU's share of the head's rows (0: all on the main GPU)
     /// Plan v0.3 P6: the share (0..1) of each layer's distinct missed experts the GPU reads over PCIe from the
@@ -1216,8 +1217,8 @@ int lamina::program::run(int argc, char** argv) {
         else if (a == "--deterministic-adapt") o.deterministic_adapt = true;
         else if (a == "--vram-pin-gib") o.vram_pin_gib = std::atof(next("--vram-pin-gib"));
         else if (a == "--second-gpu-pin-gib") o.second_gpu_pin_gib = std::atof(next("--second-gpu-pin-gib"));
-        else if (a == "--kv-grow") o.kv_grow = true;
-        else if (a == "--no-kv-grow") o.kv_grow = false;
+        else if (a == "--kv-grow") { o.kv_grow = true; o.no_kv_grow = false; }
+        else if (a == "--no-kv-grow") { o.kv_grow = false; o.no_kv_grow = true; }
         else if (a == "--head-split") o.head_split = std::atof(next("--head-split"));
         else if (a == "--pcie-frac") o.pcie_frac = std::atof(next("--pcie-frac"));
         else if (a == "--adapt-every") o.adapt_every = std::atoi(next("--adapt-every"));
@@ -1594,7 +1595,7 @@ int lamina::program::run(int argc, char** argv) {
     // second GPU's tier gets its rows through the host), so --second-gpu keeps it.
     {
         const char* ev = std::getenv("LAMINA_KV_GROW");
-        const bool asked = ev != nullptr && ev[0] != '\0' ? ev[0] != '0' : o.kv_grow;
+        const bool asked = !o.no_kv_grow && (ev != nullptr && ev[0] != '\0' ? ev[0] != '0' : o.kv_grow);
         const bool on = asked && o.serve && !o.expert_profile.empty() && o.expert_cache != 0 && !o.disable_hit &&
                         lamina::core::vmm_available();
         if (asked && !on)
