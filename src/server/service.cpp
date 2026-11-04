@@ -156,6 +156,9 @@ void check_request_sampling(json& req) {
         }
         if (value.is_boolean() || !(integer ? value.is_number_integer() : value.is_number())) throw RequestError(what);
     }
+    // the sampler divides the repeated tokens' logits by it: 0 made them infinite
+    if (const json& rp = jget(req, "repetition_penalty"); rp.is_number() && !(rp.get<double>() > 0))
+        throw RequestError("repetition_penalty: a number greater than 0");
 }
 
 json clean_shared_defaults(const json& d) {

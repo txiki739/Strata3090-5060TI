@@ -504,6 +504,20 @@ class HugeLimits(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class RepetitionPenalty(unittest.TestCase):
+    """repetition_penalty divides the repeated tokens' logits: 0 or less is a 400 (llama.cpp's name too)."""
+
+    def test_range(self):
+        port, proc, log = mock_server(self, "--script", "</think>\n\nFine.")
+        wait_ready(port, proc, "lamina-server", log)
+        for key, value, status in (("repetition_penalty", 0, 400), ("repeat_penalty", -1, 400),
+                                   ("repetition_penalty", "0", 400), ("repetition_penalty", 1.1, 200)):
+            with self.subTest(key=key, value=value):
+                got, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(**{key: value}), {})
+                self.assertEqual(got, status, raw)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class SchemaBudget(unittest.TestCase):
     """Unions whose two branches name the same next $def double the work per level (Python's too): refused quickly,
     the schema's with a 400, an answer's check with a 502."""
