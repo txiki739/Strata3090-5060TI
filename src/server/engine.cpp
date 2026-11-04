@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -49,7 +50,18 @@ LaminaEngine::LaminaEngine(std::vector<std::string> args, std::string log, bool 
         if (args_[i] == "--max-context") max_context_ = std::atoll(args_[i + 1].c_str());
     }
     if (max_context_ <= 0) max_context_ = 4096;
-    if (!lazy) start();
+    if (!lazy) {
+        try {
+            start();
+        } catch (const EngineDied& e) {
+            if (!thread_.joinable()) throw;
+            // READY's deadline passed with the engine still running on its thread, which cannot be ended, and this
+            // half-made object cannot go while it does: the start fails as the server's does, by ending the process
+            say_err(std::string("[lamina] ") + e.what());
+            std::fflush(nullptr);
+            std::_Exit(1);
+        }
+    }
 }
 
 LaminaEngine::~LaminaEngine() {
