@@ -24,6 +24,9 @@ using Clock = std::chrono::steady_clock;
 
 constexpr int64_t SUB = 2048;   // the prompt path's sub-chunk (prefill.cpp): the residual goes across in these
 uint64_t up(uint64_t n) { return (n + 255) & ~255ull; }
+/// NativeDense's zeroed tail after each native matrix: the prompt path's MMQ reads past the last row of one whose rows
+/// are not whole 256-value steps (the shared expert's down projection, 640)
+constexpr uint64_t kNativeTail = 4096;
 
 /// A copy of `bytes` from `src` to `dst`, each a device pointer on its own GPU.
 struct Run {
@@ -409,7 +412,7 @@ bool PromptSplit::init(Prefill& first, const core::WeightTable& wt, const core::
                 err = "--prompt-split: " + name + " has a native type without a block geometry";
                 return false;
             }
-            t.bytes[1] = (uint64_t) (ref.ne0 * ref.ne1 / be) * (uint64_t) bb;
+            t.bytes[1] = (uint64_t) (ref.ne0 * ref.ne1 / be) * (uint64_t) bb + kNativeTail;   // its tail copied too
         }
         if (ref.hc_codes != nullptr) t.bytes[2] = (uint64_t) (ref.ne0 * ref.ne1);
         if (ref.hc_scales != nullptr) t.bytes[3] = (uint64_t) (ref.ne0 * ref.ne1 / 32) * 2;
