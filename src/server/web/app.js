@@ -863,7 +863,11 @@ $("new-btn").onclick = () => {
   messages = [];
   saveChat();
   renderChat();
-  toast("info", "New chat", "The last one was cleared.", 6000, {label: "Undo", run: () => { messages = backup; saveChat(); renderChat(); }});
+  toast("info", "New chat", "The last one was cleared.", 6000, {label: "Undo", run: () => {
+    // a new chat begun (an answer may be streaming into it) is not thrown away for the old one
+    if (messages.length) { toast("warn", "Not undone", "The new chat has begun; the last one stays cleared."); return; }
+    messages = backup; saveChat(); renderChat();
+  }});
 };
 $("export-btn").onclick = () => {
   if (!messages.length) { toast("info", "Nothing to save yet"); return; }
