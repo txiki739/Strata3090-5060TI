@@ -3545,8 +3545,15 @@ int lamina::program::run(int argc, char** argv) {
             const int64_t cut2 = std::max(fork, msg_end) > cut1 ? std::max(fork, msg_end) : 0;
             const int64_t cuts[2] = {cut1 == INT64_MAX ? 0 : cut1, cut2};   // ascending, 0 = none
             int64_t batched_end = reuse;   // [reuse, batched_end) through the batched prompt path
-            if (geni) batched_end = n - 1;   // image rows reach the batched path only
-            else if (n - 1 - reuse > o.feed_max) batched_end = (q > reuse && n - 1 - q <= o.feed_max) ? q : n - 1;
+            if (geni) {   // image rows reach the batched path only; a short text tail after the last <|im_start|> need
+                          // not, and ends there as a text prompt does, with the turn's checkpoint
+                batched_end = n - 1;
+                if (q > reuse && n - 1 - q <= o.feed_max &&
+                    std::find(ids.begin() + q, ids.begin() + (n - 1), kImagePad) == ids.begin() + (n - 1))
+                    batched_end = q;
+            } else if (n - 1 - reuse > o.feed_max) {
+                batched_end = (q > reuse && n - 1 - q <= o.feed_max) ? q : n - 1;
+            }
             // Every batched chunk streams each expert its tokens use, however few tokens it holds, so a short last
             // chunk goes through verify windows too.  Chunks and checkpoint segments start at `reuse`.
             if (!geni && batched_end > reuse) {
