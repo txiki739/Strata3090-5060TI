@@ -3386,6 +3386,13 @@ int lamina::program::run(int argc, char** argv) {
                 continue;
             }
             const int64_t n = (int64_t) ids.size();
+            // before a cell's position is written (the image path's table holds max_context + 64 of them), and as a
+            // difference: n + max_new overflows for a huge max_new
+            if (n > o.max_context - 8 || max_new > o.max_context - 8 - n) {
+                serve_print("ERR prompt (%lld tokens) + max_new (%lld) exceeds the context (%lld)\n", (long long) n,
+                            (long long) max_new, (long long) o.max_context);
+                continue;
+            }
             req_imgs.clear();
             if (geni && !o.vision) { serve_print("ERR this engine was started without --vision\n"); continue; }
             if (geni || !mrope_identity) {
@@ -3444,11 +3451,6 @@ int lamina::program::run(int argc, char** argv) {
                 mrope_identity = !geni;
             }
             prefill.embd_rows = geni ? row_ptr.data() : nullptr;
-            if (n + max_new + 8 > o.max_context) {
-                serve_print("ERR prompt (%lld tokens) + max_new (%lld) exceeds the context (%lld)\n", (long long) n,
-                            (long long) max_new, (long long) o.max_context);
-                continue;
-            }
             bool bad = false;
             for (int64_t t : ids) bad = bad || t < 0 || t >= n_vocab;
             if (bad) { serve_print("ERR a token id is outside the vocabulary\n"); continue; }
@@ -3588,11 +3590,21 @@ int lamina::program::run(int argc, char** argv) {
                 if (!pbuf.take(chunk, err, split_try ? psplit.bytes_for(chunk, batched_end) : 0)) { report(err); return 1; }
                 tr("prompt slots lent", chunk);
                 const bool split_on = pbuf.split_region != nullptr;
+                // a return on an error below lets the second stage end first: its worker writes checkpoints into
+                // pcache's buffers, which go before psplit (finish after a finish does nothing)
+                struct SplitEnd {
+                    lamina::prefill::PromptSplit* s = nullptr;
+                    ~SplitEnd() {
+                        std::string e;
+                        if (s != nullptr) s->finish(e);
+                    }
+                } split_end;
                 if (split_on) {
                     if (!psplit.begin(pbuf.split_region, pbuf.split_bytes, chunk, reuse, batched_end, track, err)) {
                         report(err);
                         return 1;
                     }
+                    split_end.s = &psplit;
                     pcache.split_from = psplit.at();
                     pcache.split_save = [&psplit](int64_t pos, void* host) { psplit.checkpoint(pos, host); };
                 }
@@ -3611,7 +3623,8 @@ int lamina::program::run(int argc, char** argv) {
                         if (c > a0 && c < b0) { b0 = c; break; }
                     pp_at = a0;
                     if (!prefill.run(ids.data() + a0, b0 - a0, a0, err)) {
-                        if (!stop_req.load()) { report(err); return 1; }
+                        // an error while a STOP is set is still an error: the states may have gone past the chunks
+                        if (!prefill.stopped()) { report(err); return 1; }
                         // STOP: the session holds the chunks read before it
                         if (track && prefill.processed() > 0) pcache.set(a0, ids.data() + a0, prefill.processed());
                         break;

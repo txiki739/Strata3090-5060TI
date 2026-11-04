@@ -101,6 +101,8 @@ public:
     bool run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& err);
     /// Positions the last `run` completed: n, or fewer after `should_stop` (the session state holds them).
     int64_t processed() const { return processed_; }
+    /// The last `run` returned false because `should_stop` ended it between chunks (not on an error).
+    bool stopped() const { return stopped_; }
 
     const PrefillStats& stats() const { return stats_; }
     /// The prompt's routing: per layer (n_layers x n_expert) how often the tokens run since `clear_routed` chose each
@@ -153,6 +155,7 @@ private:
     std::unique_ptr<Impl> impl_;
     PrefillStats stats_;
     int64_t processed_ = 0;
+    bool stopped_ = false;
 };
 
 }  // namespace lamina::prefill

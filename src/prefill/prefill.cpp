@@ -561,6 +561,7 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
 
     static const bool trace = std::getenv("LAMINA_TRACE") != nullptr;
     processed_ = 0;
+    stopped_ = false;
     int64_t c0 = 0;
     for (; c0 < n; c0 += m.T) {
         if (should_stop && should_stop()) break;   // the chunks before stay: `prev` and the state hold them
@@ -1011,6 +1012,7 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
     processed_ = std::min(c0, n);
     if (c0 < n) {
         err = "cancelled";
+        stopped_ = true;
         return false;
     }
     return true;
