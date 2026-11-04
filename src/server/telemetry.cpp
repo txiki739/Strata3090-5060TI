@@ -884,22 +884,27 @@ class DiskRate {
 public:
     std::pair<json, json> rates(const std::optional<std::vector<DiskBytes>>& raw, double t) {
         if (!raw || raw->empty()) return {nullptr, nullptr};
-        int64_t rd = 0, wr = 0;
-        for (const DiskBytes& d : wrap_.run(*raw)) {
-            rd += d.read;
-            wr += d.written;
-        }
-        const auto prev = prev_;
-        prev_ = Reading{t, rd, wr};
+        Reading now{t, {}};
+        for (const DiskBytes& d : wrap_.run(*raw)) now.disks[d.name] = {d.read, d.written};
+        const std::optional<Reading> prev = std::move(prev_);
+        prev_ = std::move(now);
         if (!prev || t <= prev->t) return {nullptr, nullptr};
+        // each disk against its own last reading: one that came or went since moves no sum (it made the rate jump or
+        // go negative)
+        int64_t rd = 0, wr = 0;
+        for (const auto& [name, v] : prev_->disks)
+            if (const auto p = prev->disks.find(name); p != prev->disks.end()) {
+                rd += v.first - p->second.first;
+                wr += v.second - p->second.second;
+            }
         const double dt = t - prev->t;
-        return {(double) (rd - prev->read) / dt / 1048576.0, (double) (wr - prev->written) / dt / 1048576.0};
+        return {(double) rd / dt / 1048576.0, (double) wr / dt / 1048576.0};
     }
 
 private:
     struct Reading {
         double t;
-        int64_t read, written;
+        std::map<std::string, std::pair<int64_t, int64_t>> disks;   // name -> (read, written)
     };
     WrapNumbers wrap_;
     std::optional<Reading> prev_;
