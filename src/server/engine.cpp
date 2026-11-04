@@ -67,9 +67,13 @@ LaminaEngine::LaminaEngine(std::vector<std::string> args, std::string log, bool 
 LaminaEngine::~LaminaEngine() {
     try {
         close();
-    } catch (const EngineStuck&) {   // the process is ending: the engine thread ends with it
+    } catch (const EngineStuck&) {   // the process is ending: the engine's threads end with it
         if (thread_.joinable()) thread_.detach();
         if (pump_.joinable()) pump_.detach();
+        if (reader_.joinable()) {     // a child's reader still reads it: its Process is left to the process's end
+            reader_.detach();
+            (void) proc_.release();
+        }
     }
 }
 
@@ -210,14 +214,14 @@ void LaminaEngine::close() {
         in_->close();
     }
     if (proc_ != nullptr) {
-        close_process();
+        close_process();   // its writer (thread_) and reader joined
     } else {
         for (int i = 0; i < kQuitWaitS * 20 && !finished_.load(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(50));
         if (!finished_.load())
             throw EngineStuck("the engine did not stop within " + std::to_string(kQuitWaitS) + " s of QUIT: it still holds "
                               "its GPU and RAM; restart the server");
     }
-    thread_.join();
+    if (thread_.joinable()) thread_.join();
     ended_ = true;
     if (pump_.joinable()) pump_.join();   // its output closed with the engine thread
     for (int i = 0; i < 100 && bg_.load() > 0; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -272,6 +276,7 @@ void LaminaEngine::close_process() {
     }
     if (!finished_.load()) throw EngineStuck("Lamina is still releasing GPU/RAM; retry unloading after it exits");
     in_->close();
+    if (thread_.joinable()) thread_.join();   // the writer holds the process (a write to the ended child fails)
     if (reader_.joinable()) reader_.join();
     proc_.reset();
 }
