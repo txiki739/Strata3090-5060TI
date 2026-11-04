@@ -59,7 +59,9 @@ bool SecondGpu::init(int device, int main_device, int64_t n_embd, int64_t n_ff, 
     n_ff_ = n_ff;
     cap_ = (int64_t) max_t * k;
     DeviceScope scope(dev_, main_);
-    const size_t xb = (size_t) max_t * (std::max)((size_t) (n_embd / 32) * 36, (size_t) (n_embd / 256) * 292);
+    // whole float4s: copy_from_mapped's unit (Q8_K's 730 words a token are not, for an odd max_t)
+    const size_t xb = ((size_t) max_t * (std::max)((size_t) (n_embd / 32) * 36, (size_t) (n_embd / 256) * 292) + 15) &
+                      ~(size_t) 15;
     const size_t ob = (size_t) cap_ * (size_t) n_embd * sizeof(float);
     const size_t pb = PlanLayout(cap_).bytes;
     const unsigned pm = cudaHostAllocPortable | cudaHostAllocMapped;
@@ -164,7 +166,8 @@ bool SecondGpu::graph_for(int gu_type, int d_type, int gu_act, int d_act, int gr
             lamina::kernels::copy_i32_from_mapped((int32_t*) d_plan_, (const int32_t*) m_plan_, (int64_t) P.bytes / 4,
                                                   s_);
             const int64_t act_bytes = L.gu_act == 15 ? (n_embd_ / 256) * 292 : (n_embd_ / 32) * 36;
-            lamina::kernels::copy_from_mapped((float*) d_xq_, (const float*) m_x_, max_t_ * act_bytes / 4, s_);
+            lamina::kernels::copy_from_mapped((float*) d_xq_, (const float*) m_x_, (max_t_ * act_bytes / 4 + 3) & ~3ll,
+                                              s_);
         }
         const int64_t xq_stride = L.gu_act == 15 ? (n_embd_ / 256) * 292 : (n_embd_ / 32) * 36;
         lamina::kernels::native_expert_grouped(L, p64 + part * cap_, pi + P.starts[part], pi + part, pi + P.dst,
