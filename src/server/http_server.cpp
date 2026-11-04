@@ -884,7 +884,10 @@ void post_images(Exchange& x, const json& req) {
     }
     images::ImageGen& gen = *svc.images;
     const images::Job job = images::parse_request(req, gen.cfg);   // ImageRequestError: a 400
-    svc.last_request_at = now_s();
+    {
+        std::lock_guard<std::mutex> lk(svc.status_mu);   // (the idle unload reads it under the lock)
+        svc.last_request_at = now_s();
+    }
     Cancel& cancel = x.watch_client();
     say("[lamina] image: " + std::to_string(job.width) + "x" + std::to_string(job.height) + ", n=" + std::to_string(job.n) +
         ", " + std::to_string(job.steps) + " steps, seed " + std::to_string(job.seed));
@@ -1563,7 +1566,10 @@ void do_post(Service& svc, HttpServer& server, const httplib::Request& req, http
                         throw ModelBusy("a request is running or queued");
                 }
                 svc.ensure_loaded();
-                svc.last_request_at = now_s();
+                {
+                    std::lock_guard<std::mutex> lk(svc.status_mu);
+                    svc.last_request_at = now_s();
+                }
                 result = "loaded";
             }
             json out = {{"status", result}};
