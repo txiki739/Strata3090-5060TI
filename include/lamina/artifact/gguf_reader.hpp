@@ -521,8 +521,11 @@ private:
             tensors_.push_back(std::move(t));
         }
         uint64_t align = 32;
-        if (const MetaValue* a = get("general.alignment"))
-            if (a->u) align = a->u;
+        if (const MetaValue* a = get("general.alignment")) {   // as llama.cpp's gguf takes it: a uint32 power of two
+            if (a->type != MetaType::U32 || a->u == 0 || (a->u & (a->u - 1)) != 0)
+                throw std::runtime_error("GGUF: general.alignment is not a power-of-two uint32 in " + path_);
+            align = a->u;
+        }
         alignment_ = align;
         data_start_ = (c.pos() + align - 1) / align * align;
         if (data_start_ > size_) {
