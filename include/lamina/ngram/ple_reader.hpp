@@ -83,6 +83,8 @@ public:
     /// Fault injection for tests and for the plan's P2 exit check: every read completes no earlier than
     /// `delay_us` after it was issued. 0 disables.
     void set_injected_delay_us(double delay_us);
+    /// Fault injection for tests: the next `n` row reads complete as failed.
+    void set_injected_failures(uint32_t n);
 
     /// Read with no ticket in flight (the worker updates these while reads are outstanding; with the keep-alive
     /// on it may also be counting a keep-alive read - `snapshot` takes a consistent copy).

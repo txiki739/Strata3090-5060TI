@@ -113,6 +113,7 @@ struct PleReader::Impl {
     ReaderStats stats;
     size_t ring_pos = 0;
     double delay_us = 0;
+    uint32_t fail_next = 0;               // set_injected_failures
     std::string error;
     // the keep-alive (`set_keepalive`), steady-clock microseconds; `keep_us` 0 = off
     double keep_us = 0;
@@ -261,6 +262,13 @@ struct PleReader::Impl {
                 ok = false;
                 continue;
             }
+            if (fail_next > 0 && !inflight[(uint32_t) got[i].tag].keepalive) {
+                --fail_next;
+                Completion c = got[i];
+                c.ok = false;
+                if (!finish(c)) ok = false;
+                continue;
+            }
             if (delay_us > 0 && now_us() - inflight[(uint32_t) got[i].tag].issued_us < delay_us) {
                 delayed.push_back(got[i]);
                 ++stats.late_injected;
@@ -347,9 +355,9 @@ bool PleReader::open(const std::string& path, uint64_t table_offset, uint64_t n_
     }
     impl_->table_offset = table_offset;
     impl_->n_rows = n_rows;
-    impl_->max_inflight = max_inflight;
     impl_->slab = (uint8_t*) DirectFile::alloc_aligned((size_t) max_inflight * 2 * PAGE);
     if (impl_->slab == nullptr) { err = "PleReader: cannot allocate read buffers"; close(); return false; }
+    impl_->max_inflight = max_inflight;   // with its free slots: until then close() has no reads to wait for
     impl_->inflight.assign(max_inflight, Job{});
     impl_->free_slots.clear();
     for (uint32_t s = max_inflight; s-- > 0;) impl_->free_slots.push_back(s);
@@ -409,6 +417,7 @@ void PleReader::close() {
     m.delayed.clear();
     m.inflight.clear();
     m.free_slots.clear();
+    m.max_inflight = 0;
     m.cache.init(0);
     m.threaded = false;
     m.stop = false;
@@ -429,6 +438,8 @@ PleReader::Ticket PleReader::issue(const uint32_t* rows, size_t n, uint8_t* out_
     const bool rearm = m.keep_us > 0 && (m.last_issue_us <= 0 || now - m.last_issue_us > m.keep_window_us);
     m.last_issue_us = now;
     TicketState& ts = m.tickets[id];
+    // a failed reader queues nothing more (its worker no longer submits): collect reports the error at once
+    if (!m.error.empty()) return Ticket{id};
     std::unordered_map<uint64_t, size_t> by_page;     // aligned offset -> index in `jobs`
     std::vector<Job> jobs;
     for (size_t i = 0; i < n; ++i) {
@@ -527,6 +538,10 @@ void PleReader::set_keepalive(double period_ms, double window_s) {
 void PleReader::set_injected_delay_us(double delay_us) {
     std::lock_guard<std::mutex> lk(impl_->mu);
     impl_->delay_us = delay_us < 0 ? 0 : delay_us;
+}
+void PleReader::set_injected_failures(uint32_t n) {
+    std::lock_guard<std::mutex> lk(impl_->mu);
+    impl_->fail_next = n;
 }
 const ReaderStats& PleReader::stats() const { return impl_->stats; }
 ReaderStats PleReader::snapshot() const {

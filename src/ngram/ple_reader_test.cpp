@@ -421,6 +421,31 @@ int selftest(const std::string& dir, uint32_t rb) {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         CHECK(rd.snapshot().keepalive_reads == 0, "keep-alive without the worker thread");
     }
+    // a failed read: its ticket and every later one report the error; none waits for reads that never go out
+    for (bool thr : {false, true}) {
+        ng::PleReader rd;
+        std::string err;
+        CHECK(rd.open(path, HEADER, N, 16, 0, err, thr, rb), "open: %s", err.c_str());
+        rd.set_injected_failures(1);
+        std::vector<uint32_t> rows(16);
+        std::vector<uint8_t> out(16 * rb);
+        for (int k = 0; k < 3; ++k) {
+            for (auto& r : rows) r = rng() % N;
+            err.clear();
+            CHECK(!rd.collect(rd.issue(rows.data(), 16, out.data()), err) && !err.empty(),
+                  "ticket %d after a failed read (%s): no error", k, thr ? "worker" : "caller thread");
+        }
+    }
+    {   // an open that fails once the file is open: close() waits for no read, as none went out
+        ng::PleReader rd;
+        std::string err;
+        CHECK(rd.open(path, HEADER, N, 16, 0, err, true, rb), "open: %s", err.c_str());
+        CHECK(!rd.open(path, HEADER, (uint64_t) N * 4, 16, 0, err, true, rb), "a table past the file's end opened");
+        CHECK(rd.open(path, HEADER, N, 16, 0, err, true, rb), "open after a failed one: %s", err.c_str());
+        std::vector<uint32_t> rows(16);
+        for (auto& r : rows) r = rng() % N;
+        check_rows(rd, rows, N, rb, "after a failed open");
+    }
     std::filesystem::remove(path);
     std::printf("ple_reader selftest (row_bytes=%u): %s\n", rb, g_fail ? "FAILED" : "OK");
     return g_fail ? 1 : 0;
