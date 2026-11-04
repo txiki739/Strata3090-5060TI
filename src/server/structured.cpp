@@ -2596,6 +2596,114 @@ bool scheme_char(char c) {
     return is_ascii_letter((unsigned char) c) || is_digit((unsigned char) c) || c == '+' || c == '-' || c == '.';
 }
 
+/// ipaddress.IPv4Address(s) takes it: four decimal octets, 0..255, no leading zero
+bool ipv4_ok(std::string_view s) {
+    if (s.empty() || s.find('/') != npos) return false;
+    size_t octets = 0;
+    for (size_t at = 0;;) {
+        const size_t dot = s.find('.', at);
+        const std::string_view o = s.substr(at, dot == npos ? npos : dot - at);
+        if (o.empty() || o.size() > 3 || (o.size() > 1 && o[0] == '0') ||
+            !std::all_of(o.begin(), o.end(), [](char c) { return c >= '0' && c <= '9'; }) ||
+            std::stoi(std::string(o)) > 255)
+            return false;
+        ++octets;
+        if (dot == npos) break;
+        at = dot + 1;
+    }
+    return octets == 4;
+}
+
+/// ipaddress.IPv6Address(s) takes it: its %scope, at most 45 characters, hextets with at most one '::', an IPv4 tail
+bool ipv6_ok(std::string_view s) {
+    if (s.find('/') != npos) return false;
+    if (const size_t pct = s.find('%'); pct != npos) {
+        const std::string_view scope = s.substr(pct + 1);
+        if (scope.empty() || scope.find('%') != npos) return false;
+        s = s.substr(0, pct);
+    }
+    if (s.empty() || s.size() > 45) return false;
+    std::vector<std::string_view> parts;
+    for (size_t at = 0;;) {
+        const size_t c = s.find(':', at);
+        parts.push_back(s.substr(at, c == npos ? npos : c - at));
+        if (c == npos) break;
+        at = c + 1;
+    }
+    if (parts.size() < 3) return false;
+    if (parts.back().find('.') != npos) {   // two hextets' worth
+        if (!ipv4_ok(parts.back())) return false;
+        parts.back() = "0";
+        parts.push_back("0");
+    }
+    if (parts.size() > 9) return false;
+    size_t skip = npos;
+    for (size_t i = 1; i + 1 < parts.size(); ++i)
+        if (parts[i].empty()) {
+            if (skip != npos) return false;
+            skip = i;
+        }
+    size_t hi = parts.size(), lo = 0;
+    if (skip != npos) {
+        hi = skip;
+        lo = parts.size() - skip - 1;
+        if (parts.front().empty() && --hi != 0) return false;
+        if (parts.back().empty() && --lo != 0) return false;
+        if (hi + lo > 7) return false;
+    } else if (parts.size() != 8 || parts.front().empty() || parts.back().empty()) {
+        return false;
+    }
+    auto hextet = [](std::string_view h) {
+        return !h.empty() && h.size() <= 4 && std::all_of(h.begin(), h.end(), [](char c) {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        });
+    };
+    for (size_t i = 0; i < hi; ++i)
+        if (!hextet(parts[i])) return false;
+    for (size_t i = parts.size() - lo; i < parts.size(); ++i)
+        if (!hextet(parts[i])) return false;
+    return true;
+}
+
+/// urllib.parse._check_bracketed_netloc and _check_bracketed_host: an IPv6 or IPvFuture host in the brackets
+void check_bracketed_netloc(const std::string& netloc) {
+    const size_t at = netloc.rfind('@');
+    const std::string hp = at == npos ? netloc : netloc.substr(at + 1);
+    std::string host;
+    if (const size_t br = hp.find('['); br != npos) {
+        if (br > 0) raise("ValueError", "Invalid IPv6 URL");
+        const std::string bracketed = hp.substr(br + 1);
+        const size_t close = bracketed.find(']');
+        host = bracketed.substr(0, close);
+        if (close != npos && close + 1 < bracketed.size() && bracketed[close + 1] != ':')
+            raise("ValueError", "Invalid IPv6 URL");
+    } else {
+        host = hp.substr(0, hp.find(':'));
+    }
+    if (!host.empty() && host[0] == 'v') {   // re.match(r"\Av[a-fA-F0-9]+\..+\Z", host)
+        size_t k = 1;
+        while (k < host.size() && std::isxdigit((unsigned char) host[k])) ++k;
+        if (k == 1 || k + 1 >= host.size() || host[k] != '.' || host.find('\n', k + 1) != npos)
+            raise("ValueError", "IPvFuture address is invalid");
+    } else if (ipv4_ok(host)) {
+        raise("ValueError", "An IPv4 address cannot be in brackets");
+    } else if (!ipv6_ok(host)) {
+        raise("ValueError", repr(Val::str(host)) + " does not appear to be an IPv4 or IPv6 address");
+    }
+}
+
+/// urllib.parse._checknetloc: a character whose NFKC form holds / ? # @ : is refused (the characters: Python 3.12's
+/// unicodedata, Unicode 15.0; composition never makes those)
+void check_netloc(const std::string& netloc) {
+    static constexpr uint32_t kExpands[] = {0x2047, 0x2048, 0x2049, 0x2100, 0x2101, 0x2105, 0x2106,
+                                            0x2A74, 0xFE13, 0xFE16, 0xFE55, 0xFE56, 0xFE5F, 0xFE6B,
+                                            0xFF03, 0xFF0F, 0xFF1A, 0xFF1F, 0xFF20};
+    if (std::all_of(netloc.begin(), netloc.end(), [](char c) { return (unsigned char) c < 0x80; })) return;
+    for (const uint32_t c : code_points(netloc))
+        if (std::binary_search(std::begin(kExpands), std::end(kExpands), c))
+            raise("ValueError", "netloc '" + netloc + "' contains invalid characters under NFKC normalization");
+}
+
 Split urlsplit(std::string url, std::string scheme = "") {
     size_t k = 0;
     while (k < url.size() && (unsigned char) url[k] <= 0x20) ++k;
@@ -2618,6 +2726,7 @@ Split urlsplit(std::string url, std::string scheme = "") {
         out.netloc = url.substr(2, delim - 2);
         url.erase(0, delim);
         if ((out.netloc.find('[') != npos) != (out.netloc.find(']') != npos)) raise("ValueError", "Invalid IPv6 URL");
+        if (out.netloc.find('[') != npos) check_bracketed_netloc(out.netloc);
     }
     if (const size_t h = url.find('#'); h != npos) {
         out.fragment = url.substr(h + 1);
@@ -2628,6 +2737,7 @@ Split urlsplit(std::string url, std::string scheme = "") {
         url.resize(q);
     }
     out.path = url;
+    check_netloc(out.netloc);
     return out;
 }
 

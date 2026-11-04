@@ -637,6 +637,33 @@ class PythonIteration(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class NetlocChecks(unittest.TestCase):
+    """A subschema's $id is split as CPython 3.12's urlsplit splits it: a bracketed host is an IPv6 or IPvFuture one,
+    and no netloc character may turn into / ? # @ : under NFKC (upstream's structured.py with jsonschema 4.26)."""
+
+    def test_ids(self):
+        cases = [("http://[foo]/a", "'foo' does not appear to be an IPv4 or IPv6 address"),
+                 ("http://a℀b/a", "contains invalid characters under NFKC normalization"),
+                 ("http://[127.0.0.1]/a", "An IPv4 address cannot be in brackets"),
+                 ("http://[fe80::1%25eth0]/a", None)]
+        for sub_id, error in cases:
+            with self.subTest(id=sub_id):
+                port, proc, log = mock_server(self, "--script", '</think>\n\n{"a": 1}')
+                wait_ready(port, proc, "lamina-server", log)
+                schema = {"$id": "http://example.com/root", "type": "object",
+                          "properties": {"a": {"$id": sub_id, "type": "integer"}}}
+                body = {"model": "m", "messages": msgs(), "response_format": {"type": "json_schema", "json_schema": {
+                    "name": "x", "schema": schema}}}
+                status, ctype, raw = call(port, "POST", "/v1/chat/completions", body, {})
+                if error is None:
+                    self.assertEqual(status, 200, raw)
+                else:
+                    self.assertEqual((status, error in raw.decode()), (502, True), raw)
+                proc.terminate()
+                proc.wait(10)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class BigIntSchema(unittest.TestCase):
     """A schema's ints past 64 bits are Python's: exact in the validation and in the prompt."""
     BIG = 18446744073709551617
