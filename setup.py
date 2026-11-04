@@ -232,6 +232,8 @@ def cpu_avx2() -> bool:
 
 def free_gb(path: Path) -> float:
     while not path.exists():
+        if path.parent == path:   # a drive that is not there (Path("Y:/").parent is itself): no room
+            return 0.0
         path = path.parent
     return shutil.disk_usage(path).free / 1e9
 
@@ -318,9 +320,11 @@ def vs_environment(vcvars: Path) -> dict:
     """The environment vcvars64.bat makes, for the build."""
     env = clean_env()
     env.pop("NoDefaultCurrentDirectoryInExePath", None)   # vcvars runs vswhere.exe from its own folder
-    r = subprocess.run(f'"{vcvars}" >nul && set', capture_output=True, text=True, shell=True, env=env)
+    # cmd /u: `set` writes UTF-16 into the pipe; without it the OEM code page, which text=True read as the ANSI one
+    # (a non-ASCII TEMP or user folder came out garbled in the build's environment)
+    r = subprocess.run(f'cmd.exe /u /c ""{vcvars}" >nul && set"', capture_output=True, env=env)
     res = {}
-    for line in r.stdout.splitlines():
+    for line in r.stdout.decode("utf-16-le", errors="replace").splitlines():
         k, sep, v = line.partition("=")
         if sep and k:
             res[k] = v
