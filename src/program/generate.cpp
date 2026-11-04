@@ -2684,6 +2684,8 @@ int lamina::program::run(int argc, char** argv) {
     // the verifier's options and the tiers' hooks into it (prefetch, the watch, the updates at the tail), set after
     // init by the serve loop and the one-shot run alike
     auto hook_verifier = [&](lamina::core::Verifier& ver) {
+        // --deterministic-adapt sends the main tier's moves at the window's tail: after the window's last layer read
+        if (o.deterministic_adapt && tier.on()) tier.set_after(ver.window_done());
         ver.set_split(o.spec_split);
         ver.set_profile(o.window_profile);
         ver.set_pcie_mode(o.pcie_mode == "dma" ? 0 : o.pcie_mode == "direct" ? 1 : o.pcie_mode == "kernel" ? 2

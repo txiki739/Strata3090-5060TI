@@ -82,6 +82,8 @@ public:
     /// out.  `pump` submits them in order while they fit `budget` bytes, `sent` the bytes submitted, after `ev` (on
     /// the cache's GPU: the last work that may read the slots they overwrite).
     void set_paced(cudaEvent_t ev) { paced_ = true; after_ = ev; }
+    /// Unpaced: the copies still wait for `ev` (the work that may read their slots), as paced ones do.
+    void set_after(cudaEvent_t ev) { after_ = ev; }
     bool pump(uint64_t budget, uint64_t& sent, std::string& err);
 
     /// Moves into slots outside its free lists (the prompt path's lent slots, given back): (layer, expert, slot)

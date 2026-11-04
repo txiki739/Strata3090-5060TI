@@ -155,6 +155,10 @@ bool AdaptiveTier::pump_bytes(uint64_t bytes, std::string& err) {
     }
     if (sent_ >= staged_ || bytes < (64u << 10)) return true;
     DeviceScope on(dev_, main_, dev_ >= 0);
+    if (after_ != nullptr && cudaStreamWaitEvent(stream_, after_, 0) != cudaSuccess) {   // set_after
+        err = "adaptive tier: a refill copy failed";
+        return false;
+    }
     const bool timed = time_begin(bytes >= (256u << 10));
     uint64_t done = 0;
     while (sent_ < staged_ && done < bytes) {
