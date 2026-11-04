@@ -2455,9 +2455,10 @@ struct Engine {
         const bool ext = one || (fast_k && std::getenv("LAMINA_Q36_NO_EXT") == nullptr && !verify_k && T <= kGemmT && g.n_expert == 256 && Kp == 8);
         if (ext) f32mm(L.router_ext, h, logits_r, N, (int) g.n_expert + 1, T);
         else f32mm(L.router, h, logits_r, N, (int) g.n_expert, T);
-        // the hybrid rows path: a batch of up to hybrid_t rows; when only the MTP block is hybrid, its every batch
-        // (its prompt pass too: no staging buffers then)
-        const bool hy_rows = lhy(li) && (T <= hybrid_t || !main_hybrid);
+        // the hybrid rows path: every batch of a hybrid layer but a prompt chunk past hybrid_t that MMQ streams (main
+        // layers: when only the MTP block is hybrid it has no staging buffers); the all-resident path below would read
+        // its slot-indexed blobs by expert id (--hybrid-rows under 8)
+        const bool hy_rows = lhy(li) && !(main_hybrid && T > hybrid_t && T > kGemmT && use_mmq);
         const bool mmq_rows = !hy_rows && T > kGemmT && use_mmq;
         if (!(!mmq_rows && route_group(L, hy_rows ? hy[li].slot_of_d : nullptr, T, ext ? (int) g.n_expert + 1 : (int) g.n_expert)))
             K::native_router_topk(logits_r, ids, ewts, (int) g.n_expert, Kp, T, st);
@@ -3176,17 +3177,21 @@ struct Engine {
         rows_mode = true;
         rows_G = T;
         rows_deferred = true;
-        run_graph_key(3000 + T, [&] {
+        // a hybrid MTP layer's host part (the CPU pool's experts) is no graph's: run as it is
+        const bool graphed = use_graph && mtp_graph;
+        auto body = [&] {
             K::iq_embed_rows(m->embd_type, m->embd, m->embd_row, m->embd_rows, tok_m, T, N, y, st);
             k_rms_ld<<<T, kThreads, 0, st>>>(y, N, m->mtp_enorm, mtp_cat, 2 * N, N, m->eps);                 // [e | ...]
             k_rms_ld<<<T, kThreads, 0, st>>>(mtp_seed(), N, m->mtp_hnorm, mtp_cat + N, 2 * N, N, m->eps);   // [... | h]
             mm(m->eh_proj, mtp_cat, x, T);
             k_rms<<<T, kThreads, 0, st>>>(x, m->mtp.attn_norm, h, N, m->eps);
-            layer(m->mtp, m->layers.size(), T, pmax, pos0_m, use_graph, false, m->mtp_shnorm, hmtp);
+            layer(m->mtp, m->layers.size(), T, pmax, pos0_m, graphed, false, m->mtp_shnorm, hmtp);
             mm(m->head, hmtp, logits_mr, T);
             k_argmax<<<dim3(kArgBlocks, T), kThreads, 0, st>>>(logits_mr, (int) g.n_vocab, pick_mr, amv, ami, false);
             k_argmax<<<dim3(1, T), kThreads, 0, st>>>(logits_mr, kArgBlocks, pick_mr, amv, ami, true);
-        });
+        };
+        if (graphed) run_graph_key(3000 + T, body);
+        else body();
         rows_deferred = false;
         rows_mode = false;
         CK(cudaMemcpyAsync(hrow + 32, pick_mr, (size_t) T * 4, cudaMemcpyDeviceToHost, st));
