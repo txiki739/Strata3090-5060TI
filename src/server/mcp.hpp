@@ -145,7 +145,8 @@ public:
     std::shared_ptr<McpTransport> transport() const;
 
 private:
-    bool start_locked();
+    /// `cancel`: a call's start again, given up (McpCancelled, the server left stopped) when its requester leaves
+    bool start_locked(Cancel* cancel = nullptr);
     std::mutex lock_;                          ///< a start, and a call's look at the transport
     std::shared_ptr<McpTransport> transport_;  ///< changed under lock_ and state_mu
     double last_start_ = 0;

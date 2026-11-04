@@ -304,7 +304,8 @@ json anthropic_collect(const std::vector<std::pair<std::string, json>>& events) 
 
 void run_with_mcp(Service& svc, const std::shared_ptr<McpHub>& hub, json messages, const json& tools, const json& kw,
                   std::vector<int32_t> ids, bool thinking, int64_t max_new, int64_t max_req, const json& sampling,
-                  Cancel& cancel, const std::set<std::string>& mcp_names, const Sink& sink) {
+                  const std::shared_ptr<Cancel>& cancel_owner, const std::set<std::string>& mcp_names, const Sink& sink) {
+    Cancel& cancel = *cancel_owner;
     const int64_t max_rounds = hub->settings["max_rounds"].get<int64_t>();
     int64_t total = 0, rounds = 0;
     json done;
@@ -370,12 +371,12 @@ void run_with_mcp(Service& svc, const std::shared_ptr<McpHub>& hub, json message
                 std::string error;
             };
             auto box = std::make_shared<Box>();
-            std::thread([box, hub, name = c->name, args = c->arguments, &cancel] {
+            std::thread([box, hub, name = c->name, args = c->arguments, cancel_owner] {
                 json r;
                 bool cancelled = false;
                 std::string error;
                 try {
-                    r = hub->call(name, args, &cancel);
+                    r = hub->call(name, args, cancel_owner.get());
                 } catch (const McpCancelled&) {
                     cancelled = true;
                 } catch (const std::exception& e) {

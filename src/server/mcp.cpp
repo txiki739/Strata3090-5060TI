@@ -632,7 +632,7 @@ bool McpServer::start() {
     return start_locked();
 }
 
-bool McpServer::start_locked() {
+bool McpServer::start_locked(Cancel* cancel) {
     if (const auto old = transport()) old->close();
     std::shared_ptr<McpTransport> t;
     if (kind == "http") t = std::make_shared<HttpTransport>(name, cfg);
@@ -651,7 +651,7 @@ bool McpServer::start_locked() {
                                     {{"protocolVersion", kMcpProtocol},
                                      {"capabilities", json::object()},
                                      {"clientInfo", {{"name", "lamina"}, {"title", "Lamina"}, {"version", "1"}}}},
-                                    timeout);
+                                    timeout, cancel);
         const json& version = jget(res, "protocolVersion");
         t->set_protocol(truthy(version) ? py_str(version) : std::string(kMcpProtocol));
         json server_info = json::object();
@@ -669,7 +669,7 @@ bool McpServer::start_locked() {
         for (int page_no = 0; page_no < 100; ++page_no) {   // pages; a server that never stops paging is cut off
             json page;
             try {
-                page = t->request("tools/list", truthy(cursor) ? json{{"cursor", cursor}} : json::object(), timeout);
+                page = t->request("tools/list", truthy(cursor) ? json{{"cursor", cursor}} : json::object(), timeout, cancel);
             } catch (const McpError& e) {
                 // a server without tools (prompts or resources only)
                 if (std::string_view(e.what()).find("code -32601") != std::string_view::npos && listed.empty()) break;
@@ -693,6 +693,13 @@ bool McpServer::start_locked() {
         say("[lamina] MCP server " + py_repr_str(name) + ": " + std::to_string(listed.size()) + " tool" +
             (listed.size() != 1 ? "s" : "") + (listed.empty() ? "" : " (" + names + ")"));
         return true;
+    } catch (const McpCancelled&) {   // the requester left: not a failed start, the next call starts it again
+        {
+            std::lock_guard<std::mutex> lk(state_mu);
+            status = "stopped";   // (its last tool list kept: routes() sends the next call here)
+        }
+        t->close();
+        throw;
     } catch (const std::exception& e) {   // McpError (anything else would be a failed start as well)
         {
             std::lock_guard<std::mutex> lk(state_mu);
@@ -710,7 +717,8 @@ bool McpServer::start_locked() {
 json McpServer::call(const std::string& tool, const json& arguments, double timeout, Cancel* cancel) {
     std::shared_ptr<McpTransport> t;
     {
-        std::lock_guard<std::mutex> lk(lock_);
+        std::lock_guard<std::mutex> lk(lock_);   // (another call's start may hold it a while)
+        if (cancel != nullptr && cancel->is_set()) throw McpCancelled("stopped");
         t = transport();
         if (!t || !t->alive()) {
             // it stopped since its last call (a crash, an expired session): start it again; one that failed to start
@@ -725,7 +733,7 @@ json McpServer::call(const std::string& tool, const json& arguments, double time
             if (was == "failed" && mono() - last_start_ < 10)
                 throw McpError("the server is not running (" + (why && !why->empty() ? *why : std::string("it stopped")) + ")");
             say("[lamina] MCP server " + py_repr_str(name) + " had stopped; starting it again");
-            if (!start_locked()) {
+            if (!start_locked(cancel)) {
                 std::lock_guard<std::mutex> st(state_mu);
                 throw McpError("the server could not be started again: " + (error ? *error : std::string("None")));
             }
@@ -733,7 +741,10 @@ json McpServer::call(const std::string& tool, const json& arguments, double time
         }
     }
     try {
+        if (cancel != nullptr && cancel->is_set()) throw McpCancelled("stopped");   // never sent after a Stop
         return t->request("tools/call", {{"name", tool}, {"arguments", arguments}}, timeout, cancel);
+    } catch (const McpCancelled&) {
+        throw;
     } catch (const McpError& e) {
         if (!t->alive()) {
             std::lock_guard<std::mutex> st(state_mu);

@@ -1008,7 +1008,7 @@ void post_openai(std::shared_ptr<Exchange> xp, json req) {
     auto runner = std::make_shared<Runner>();
     if (use_mcp) {
         auto hub = svc.mcp;
-        *runner = [&svc, hub, messages, tools, kw, p, max_req, req, &cancel, mcp_names](const Sink& sink) {
+        *runner = [&svc, hub, messages, tools, kw, p, max_req, req, cancel = x.cancel, mcp_names](const Sink& sink) {
             run_with_mcp(svc, hub, messages, tools, kw, p.ids, p.thinking, p.max_new, max_req, req, cancel, mcp_names, sink);
         };
     }

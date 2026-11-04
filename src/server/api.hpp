@@ -59,10 +59,11 @@ json anthropic_collect(const std::vector<std::pair<std::string, json>>& events);
 /// Service::run with the MCP tools executed here: a call to an MCP tool is run, its call and result join the
 /// conversation and the model goes on, up to the hub's max_rounds. "mcp" events say what the tools do; one "done"
 /// at the very end counts every round's output tokens. `mcp_names`: this request's MCP tools; a call to any other
-/// is the client's and ends the turn as always.
+/// is the client's and ends the turn as always. `cancel` is shared with each tool's thread, which can outlive the
+/// request when a tool does not notice its Stop.
 void run_with_mcp(Service& svc, const std::shared_ptr<McpHub>& hub, json messages, const json& tools, const json& kw,
                   std::vector<int32_t> ids, bool thinking, int64_t max_new, int64_t max_req, const json& sampling,
-                  Cancel& cancel, const std::set<std::string>& mcp_names, const Sink& sink);
+                  const std::shared_ptr<Cancel>& cancel, const std::set<std::string>& mcp_names, const Sink& sink);
 
 /// one line per request while diagnosing blank turns (LAMINA_DEBUG=1)
 void debug_request(const std::string& api, const json& req, const json& messages, const json& tools, int64_t max_new,
