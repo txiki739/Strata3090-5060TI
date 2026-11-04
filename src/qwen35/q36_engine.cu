@@ -1631,6 +1631,7 @@ struct Engine {
     }
 #if defined(LAMINA_Q36_CPU_POOL)
     std::unique_ptr<lamina::kernels::cpu::ExpertPool> pool;
+    std::unique_ptr<lamina::kernels::cpu::HostPin> host_pin;   // the host loop on the core the pool's workers leave
     std::vector<lamina::kernels::cpu::ExpertJobMulti> jobs;
 #endif
     float *h_h = nullptr, *cpu_out = nullptr, *ecpu = nullptr;
@@ -3533,6 +3534,7 @@ bool place_experts(Model& m, Engine& E, double vram_gib, int threads, int hybrid
         }
     }
     E.pool = std::make_unique<C::ExpertPool>(threads);
+    E.host_pin = std::make_unique<C::HostPin>(C::CorePlacement(false).host());
     CK(cudaDeviceSynchronize());
     if (mtp_only)
         std::fprintf(stderr, "lamina: every main layer's routed experts in VRAM (%.2f GiB); the MTP block's: %d of "

@@ -1916,6 +1916,7 @@ int lamina::program::run(int argc, char** argv) {
     lamina::kernels::cpu::CorePlacement placement(/*spare_first=*/o.second_gpu >= 0);
     lamina::kernels::cpu::ExpertPool pool(o.pool_workers, /*pin=*/true, /*host_works=*/true,
                                           placement.workers());
+    const lamina::kernels::cpu::HostPin host_pin(placement.host());   // the core the workers leave it
     std::fprintf(stderr, "lamina: session is up; locating the head\n");
     const lamina::core::WeightRef* wo = wt.find("output.weight");
     if (wo == nullptr) { std::fprintf(stderr, "lamina: output.weight is missing\n"); return 1; }

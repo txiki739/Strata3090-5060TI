@@ -115,6 +115,19 @@ private:
 long long pin_current_thread(int core);
 void restore_thread_affinity(long long previous);
 
+/// The host loop's thread on `core` (CorePlacement::host()) for this object's life, its mask restored at the end;
+/// made and destroyed on the thread that runs the loop.
+class HostPin {
+public:
+    explicit HostPin(int core) : prev_(core >= 0 ? pin_current_thread(core) : -1) {}
+    ~HostPin() { restore_thread_affinity(prev_); }
+    HostPin(const HostPin&) = delete;
+    HostPin& operator=(const HostPin&) = delete;
+
+private:
+    long long prev_;
+};
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4324)   // the alignas(64) members pad the class on purpose (one cache line each)
