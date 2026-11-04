@@ -664,6 +664,22 @@ class NetlocChecks(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class GroupNames(unittest.TestCase):
+    """A pattern's group names are str.isidentifier()'s (Python 3.12): "a²" is none, "Ⅰ" (a letter number) is one."""
+
+    def test_names(self):
+        port, proc, log = mock_server(self, "--script", '</think>\n\n{"a": "x"}')
+        wait_ready(port, proc, "lamina-server", log)
+        for name, status in (("a²", 400), ("Ⅰ", 200)):
+            with self.subTest(name=name):
+                schema = {"type": "object", "properties": {"a": {"type": "string", "pattern": "(?P<%s>x)" % name}}}
+                body = {"model": "m", "messages": msgs(), "response_format": {"type": "json_schema", "json_schema": {
+                    "name": "x", "schema": schema}}}
+                got, ctype, raw = call(port, "POST", "/v1/chat/completions", body, {})
+                self.assertEqual(got, status, raw)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class BigIntSchema(unittest.TestCase):
     """A schema's ints past 64 bits are Python's: exact in the validation and in the prompt."""
     BIG = 18446744073709551617
