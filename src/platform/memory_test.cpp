@@ -90,6 +90,20 @@ int main() {
     fail |= pmc.WorkingSetSize < bytes;
 #endif
     lamina::platform::unlock_resident(p, bytes);
+#if defined(_WIN32)
+    // the working-set minimum the lock raised is lowered by its unlock: three more rounds leave it where it was
+    SIZE_T min0 = 0, max0 = 0, min1 = 0, max1 = 0;
+    DWORD flags = 0;
+    GetProcessWorkingSetSizeEx(GetCurrentProcess(), &min0, &max0, &flags);
+    for (int k = 0; k < 3; ++k) {
+        const lamina::platform::LockResult again = lamina::platform::lock_resident(p, bytes);
+        lamina::platform::unlock_resident(p, again.locked_bytes);
+    }
+    GetProcessWorkingSetSizeEx(GetCurrentProcess(), &min1, &max1, &flags);
+    std::printf("working-set minimum %llu MiB, after three more locks and unlocks %llu MiB\n",
+                (unsigned long long) (min0 >> 20), (unsigned long long) (min1 >> 20));
+    fail |= min1 != min0;
+#endif
     std::free(p);
     std::printf("platform_memory_test: %s\n", fail ? "FAILED" : "OK");
     return fail;

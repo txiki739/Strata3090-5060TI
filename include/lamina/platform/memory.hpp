@@ -22,12 +22,8 @@ struct LockResult {
 /// Lock [p, p + bytes) into physical memory. Partial success is reported, not hidden.
 LockResult lock_resident(void* p, uint64_t bytes);
 
-/// Pin-by-need: lock several disjoint regions (the holes between the registered ranges of an arena).  The Windows
-/// working-set minimum is raised ONCE for the total (lock_resident per region would add its margin every time);
-/// stops at the first refusal and reports the bytes locked so far.  Undo each region with unlock_resident.
-LockResult lock_resident_ranges(const std::vector<std::pair<void*, uint64_t>>& regions);
-
-/// Undo lock_resident for the same region (best effort).
+/// Undo lock_resident for the same region, `bytes` its LockResult::locked_bytes (best effort): on Windows the
+/// working-set minimum goes down by what the lock raised it.
 void unlock_resident(void* p, uint64_t bytes);
 
 /// #243, Windows: the GPU's shared (non-local) memory budget and this process's use of it, from DXGI

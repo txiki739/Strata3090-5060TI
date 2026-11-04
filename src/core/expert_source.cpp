@@ -719,7 +719,9 @@ bool ArenaExpertSource::open(int64_t n_layers, int64_t n_expert, int threads, st
                     placed(n_layers);
                     return;
                 }
-                tail_note = lamina::platform::lock_resident(tail_, tail_bytes_).note;
+                const lamina::platform::LockResult lr = lamina::platform::lock_resident(tail_, tail_bytes_);
+                tail_note = lr.note;
+                tail_locked_ = lr.locked_bytes;
                 uint8_t* at = (uint8_t*) tail_;
                 for (int64_t m = l; m < n_layers; ++m) {
                     layer_base_[(size_t) m] = at;
@@ -900,10 +902,11 @@ void ArenaExpertSource::close() {
 #endif
     pinned_layers_ = 0;
     if (tail_ != nullptr) {
-        lamina::platform::unlock_resident(tail_, tail_bytes_);
+        lamina::platform::unlock_resident(tail_, tail_locked_);
         release_pageable(tail_, tail_bytes_);
         tail_ = nullptr;
         tail_bytes_ = 0;
+        tail_locked_ = 0;
     }
     layer_base_.clear();
     layer_dev_.clear();
