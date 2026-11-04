@@ -851,10 +851,12 @@ std::string dumps(const Val& root) {
 
 // ============================================================================================ json.loads
 /// json.loads(text, object_pairs_hook=<duplicate keys are errors>, parse_constant=<NaN and Infinity are errors>):
-/// CPython's C scanner, its messages and positions (in characters)
+/// CPython's C scanner, its messages and positions (in characters). `lenient`: json.loads' own duplicate keys (a
+/// request's: the last value at the first key's place)
 class Decoder {
 public:
-    explicit Decoder(std::string_view text) : s_(code_points(text)), n_(s_.size()) {}
+    explicit Decoder(std::string_view text, bool lenient = false)
+        : s_(code_points(text)), n_(s_.size()), lenient_(lenient) {}
     Val decode();
 
 private:
@@ -882,6 +884,7 @@ private:
 
     std::u32string s_;
     size_t n_;
+    bool lenient_;
 };
 
 void Decoder::fail(const char* msg, size_t pos) const {
@@ -1018,11 +1021,25 @@ Val Decoder::number(size_t start, size_t* next) const {
 }
 
 /// the object_pairs_hook: the first repeated key is an error
-void finish_object(Val& v) {
+void finish_object(Val& v, bool lenient) {
     if (v.dict.size() > 1) {
         std::unordered_set<std::string_view> seen;
+        bool repeated = false;
         for (const Member& m : v.dict)
-            if (!seen.insert(m.key).second) raise("ValueError", "duplicate JSON key: " + m.key);
+            if (!seen.insert(m.key).second) {
+                if (!lenient) raise("ValueError", "duplicate JSON key: " + m.key);
+                repeated = true;
+            }
+        if (repeated) {   // json.loads' dict: the last value, at the key's first place
+            std::unordered_map<std::string, size_t> at;
+            std::vector<Member> kept;
+            for (Member& m : v.dict) {
+                const auto [it, fresh] = at.emplace(m.key, kept.size());
+                if (fresh) kept.push_back(std::move(m));
+                else kept[it->second].val = std::move(m.val);
+            }
+            v.dict = std::move(kept);
+        }
     }
     v.index();
 }
@@ -1102,7 +1119,7 @@ Val Decoder::scan(size_t idx, size_t* next) const {
         idx = skip(idx);
         if (idx < n_ && s_[idx] == (o.obj ? U'}' : U']')) {
             ++idx;
-            if (o.obj) finish_object(o.v);
+            if (o.obj) finish_object(o.v, lenient_);
             cur = std::move(o.v);
             st.pop_back();
             continue;
@@ -4450,10 +4467,58 @@ std::optional<std::pair<std::string, std::string>> first_error(const Validator& 
     return std::make_pair("/" + joined(s.path, "/"), s.message);
 }
 
+/// the schema at `at` in the request's text as json.loads read it there (its ints past 64 bits whole, which nlohmann
+/// makes doubles); nullopt when the text holds no object there
+std::optional<Val> schema_in_text(std::string_view text, const std::vector<std::string>& at) {
+    if (text.empty() || at.empty()) return std::nullopt;
+    Val root;
+    try {
+        root = Decoder(text, true).decode();
+    } catch (const PyError&) {
+        return std::nullopt;
+    }
+    const Val* v = &root;
+    for (const std::string& key : at) {
+        v = v->k == K::Dict ? v->get(key) : nullptr;
+        if (v == nullptr) return std::nullopt;
+    }
+    if (v->k != K::Dict) return std::nullopt;
+    return *v;
+}
+
+/// a float in nlohmann's `root` that may have been an int past 64 bits (integral, 2^63 or more)
+bool maybe_big(const json& root) {
+    std::vector<const json*> todo{&root};
+    while (!todo.empty()) {
+        const json* v = todo.back();
+        todo.pop_back();
+        if (v->is_number_float() && std::fabs(v->get<double>()) >= 9223372036854775808.0 &&
+            std::trunc(v->get<double>()) == v->get<double>())
+            return true;
+        if (v->is_structured())
+            for (const json& e : *v) todo.push_back(&e);
+    }
+    return false;
+}
+
+/// a Python int past 64 bits anywhere in `root`
+bool has_big(const Val& root) {
+    std::vector<const Val*> todo{&root};
+    while (!todo.empty()) {
+        const Val* v = todo.back();
+        todo.pop_back();
+        if (v->k == K::Big) return true;
+        for (const Val& e : v->list) todo.push_back(&e);
+        for (const Member& m : v->dict) todo.push_back(&m.val);
+    }
+    return false;
+}
+
 }  // namespace
 
 std::pair<json, std::shared_ptr<const Validator>> prepare_format(const json& response_format, const json& messages,
-                                                                 bool with_tools) {
+                                                                 bool with_tools, std::string_view request,
+                                                                 const std::vector<std::string>& schema_at) {
     if (response_format.is_null()) return {messages, nullptr};
     if (!response_format.is_object()) throw RequestError("response_format must be an object");
     const json& kind = jget(response_format, "type");
@@ -4483,9 +4548,11 @@ std::pair<json, std::shared_ptr<const Validator>> prepare_format(const json& res
     }
     const json& schema = *chosen;
     check_refs(schema);
+    std::optional<Val> exact;   // the request's own numbers
     if (!validator->object_only) {
         try {
-            validator->schema = from_json(schema);
+            if (maybe_big(schema)) exact = schema_in_text(request, schema_at);
+            validator->schema = exact ? *exact : from_json(schema);
             validator->dialect = dialect_for(validator->schema, &meta().dialects[(int) Draft::D2020]);
             validator->patterns.add_from(validator->schema);
             if (const std::optional<std::string> error =
@@ -4503,7 +4570,7 @@ std::pair<json, std::shared_ptr<const Validator>> prepare_format(const json& res
         "No Markdown, headings, code fences, commentary, or text outside the JSON. "
         "Use every required field, correct types, and only allowed fields. "
         "Put all requested writing inside the appropriate JSON string fields.\nJSON Schema:\n" +
-        py_dumps(schema, false, true);
+        (exact && has_big(*exact) ? dumps(*exact) : py_dumps(schema, false, true));
     if (with_tools)   // /v1/responses (#782): the schema is for the final answer; a turn that calls a tool is not one
         directive += "\nThis applies only to your final answer. To use a tool, call it as usual; the JSON object is "
                      "what you write once you are done with the tools.";

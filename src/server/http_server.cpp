@@ -987,7 +987,8 @@ void post_openai(std::shared_ptr<Exchange> xp, json req) {
     x.no_local_images(messages);
     if (tool_choice_of(jget(req, "tool_choice")).first == "none") tools = nullptr;   // as the Responses route: none offered
     const std::optional<std::string> force = forced_call(jget(req, "tool_choice"), tools);   // a bad value: a 400 now
-    auto [formatted, validator] = prepare_format(jget(req, "response_format"), messages);
+    auto [formatted, validator] = prepare_format(jget(req, "response_format"), messages, false, xp->req.body,
+                                                 {"response_format", "json_schema", "schema"});
     messages = std::move(formatted);
     if (validator != nullptr && (truthy(tools) || truthy(jget(req, "lamina_mcp"))))
         throw RequestError("structured response_format with tools/MCP is not supported");
@@ -1216,7 +1217,8 @@ void post_apply_template(Exchange& x, json req) {
     req = svc.with_shared(req, "openai");
     Converted conv = openai_to_messages(req);
     if (tool_choice_of(jget(req, "tool_choice")).first == "none") conv.tools = nullptr;
-    auto formatted = prepare_format(jget(req, "response_format"), conv.messages).first;
+    auto formatted = prepare_format(jget(req, "response_format"), conv.messages, false, x.req.body,
+                                    {"response_format", "json_schema", "schema"}).first;
     x.reply(200, {{"prompt", svc.render_prompt(formatted, conv.tools, conv.kwargs)}});
 }
 
@@ -1272,7 +1274,8 @@ void post_responses(std::shared_ptr<Exchange> xp, json req) {
             throw responses::ResponsesError(e.what(), "input");
         }
         try {
-            auto [m, v] = prepare_format(responses::text_format(req), messages, truthy(tools));
+            auto [m, v] = prepare_format(responses::text_format(req), messages, truthy(tools), xp->req.body,
+                                         {"text", "format", "schema"});
             messages = std::move(m);
             validator = v;
         } catch (const std::invalid_argument& e) {

@@ -12,7 +12,9 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace lamina {
 
@@ -28,8 +30,11 @@ class Validator;
 /// text). RequestError (a 400) for a malformed format, an invalid schema or one nested too deep; std::runtime_error
 /// where Python raises something other than a ValueError (a 500). `with_tools`: /v1/responses with tools (#782), the
 /// schema is for the final answer.
+/// `request`, `schema_at`: the request's text and the keys that lead to its schema there, which is then read with
+/// json.loads' numbers (ints past 64 bits whole); without them, from `response_format`
 std::pair<json, std::shared_ptr<const Validator>> prepare_format(const json& response_format, const json& messages,
-                                                                 bool with_tools = false);
+                                                                 bool with_tools = false, std::string_view request = {},
+                                                                 const std::vector<std::string>& schema_at = {});
 
 /// the answer's JSON (compact, non-ASCII as is) when the turn ended with "stop" and the answer is valid;
 /// StructuredOutputError otherwise

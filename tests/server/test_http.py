@@ -602,6 +602,32 @@ class KeyBeforeBody(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class BigIntSchema(unittest.TestCase):
+    """A schema's ints past 64 bits are Python's: exact in the validation and in the prompt."""
+    BIG = 18446744073709551617
+
+    def test_exact(self):
+        port, proc, log = mock_server(self, "--script", '</think>\n\n{"a": %d}' % self.BIG,
+                                      "--script", '</think>\n\n{"a": %d}' % (self.BIG - 1))
+
+        def ask(rule):
+            schema = {"type": "object", "properties": {"a": rule}}
+            body = {"model": "m", "messages": msgs(), "response_format": {"type": "json_schema",
+                                                                          "json_schema": {"name": "x", "schema": schema}}}
+            status, ctype, raw = call(port, "POST", "/v1/chat/completions", body, {})
+            return status, raw.decode()
+        wait_ready(port, proc, "lamina-server", log)
+        status, raw = ask({"const": self.BIG})
+        self.assertEqual(status, 200, raw)
+        status, raw = ask({"multipleOf": self.BIG})   # the answer one less
+        self.assertEqual(status, 502, raw)
+        body = {"model": "m", "messages": msgs(), "response_format": {"type": "json_schema", "json_schema": {
+            "name": "x", "schema": {"type": "object", "properties": {"a": {"const": self.BIG}}}}}}
+        status, ctype, raw = call(port, "POST", "/apply-template", body, {})
+        self.assertIn('"const":%d' % self.BIG, parse_body(ctype, raw)["prompt"])
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class HttpGolden(unittest.TestCase):
     def test_answers(self):
         want = json.loads(GOLDEN.read_text(encoding="utf-8"))
