@@ -6,6 +6,7 @@
 #include "http_client.hpp"
 #include "log.hpp"
 #include "process.hpp"
+#include "sync.hpp"
 
 #include <atomic>
 #include <cerrno>
@@ -227,9 +228,14 @@ struct StdioTransport::Impl {
     std::string junk, junk_after;   // that line, and the stderr tail when it came (which of the two is newer)
     std::atomic<bool> ended{false};
     bool reader_done = false;       // under mu
-    std::condition_variable reader_cv;
+    bool writer_done = false;       // under mu
+    std::condition_variable reader_cv;   // and writer_done
+    // the lines to the server, written by write_loop: a server that stops reading holds that thread in its write,
+    // not a request (it times out, a Stop ends it) or close (it ends the server then)
+    std::shared_ptr<LineChannel> lines = std::make_shared<LineChannel>();
 
     void read();
+    void write_loop();
     void dispatch(const json& m);
     void send(const json& msg);
     std::string tail();
@@ -242,7 +248,8 @@ StdioTransport::StdioTransport(std::string name, json cfg) : impl_(std::make_sha
 }
 
 StdioTransport::~StdioTransport() {
-    if (impl_->proc) impl_->proc->kill();   // with what it started; the reader ends with its output
+    impl_->lines->close();
+    if (impl_->proc) impl_->proc->kill();   // with what it started; the reader ends with its output, the writer's write fails
 }
 
 void StdioTransport::start() {
@@ -280,6 +287,7 @@ void StdioTransport::start() {
         throw McpError("could not start " + py_repr_str(command) + ": " + e.what());
     }
     std::thread([self = impl_] { self->read(); }).detach();
+    std::thread([self = impl_] { self->write_loop(); }).detach();
 }
 
 bool StdioTransport::alive() {
@@ -381,7 +389,20 @@ void StdioTransport::Impl::dispatch(const json& m) {
 }
 
 void StdioTransport::Impl::send(const json& msg) {
-    if (!proc || !proc->write(py_dumps(msg, false) + "\n")) throw McpError("the server stopped" + tail());
+    if (!proc || ended) throw McpError("the server stopped" + tail());
+    lines->push(py_dumps(msg, false) + "\n");   // a write that fails ends the input; the reader then ends
+}
+
+void StdioTransport::Impl::write_loop() {
+    std::string line;
+    while (lines->pop(line, -1) == 1)
+        if (!proc->write(line)) break;
+    proc->close_stdin();   // close's end of the input, or a server that stopped reading it
+    {
+        std::lock_guard<std::mutex> lk(mu);
+        writer_done = true;
+    }
+    reader_cv.notify_all();
 }
 
 void StdioTransport::Impl::cancelled(long long rid, const std::string& reason) {
@@ -426,7 +447,11 @@ void StdioTransport::notify(const std::string& method, const json& params) {
 void StdioTransport::close() {
     Impl& s = *impl_;
     if (!s.proc) return;
-    s.proc->close_stdin();
+    s.lines->close();   // the writer closes the input after what is queued; one held in a write is ended below
+    {
+        std::unique_lock<std::mutex> lk(s.mu);
+        s.reader_cv.wait_for(lk, std::chrono::seconds(2), [&] { return s.writer_done; });
+    }
     if (!s.proc->wait(2)) s.proc->kill();   // npx.cmd -> node: the whole tree
     // its reader ends with the output (Python closes the pipe under it; here its end is awaited, briefly: a program
     // it started may hold the pipe open)
