@@ -29,6 +29,10 @@ struct TemplateRequestError : std::invalid_argument {
 struct RequestError : std::invalid_argument {
     using std::invalid_argument::invalid_argument;
 };
+/// a tool call the model wrote that does not parse (tool_call_recovery off): the server's failure, never a 400
+struct ToolCallError : std::invalid_argument {
+    using std::invalid_argument::invalid_argument;
+};
 
 class ChatTemplate {
 public:

@@ -441,6 +441,42 @@ class MarkerNames(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class MalformedCall(unittest.TestCase):
+    """A tool call that does not parse is the server's failure (tool_call_recovery: its text), and the next request
+    is answered."""
+    CALL = "<tool_call>\n<function=get_time>\n</function>\n<parameter=zone\n</tool_call>"
+
+    def serve(self, *extra):
+        answer = "A thought.</think>\n\n" + self.CALL
+        port, proc, log = mock_server(self, "--script", answer, "--script", answer, "--script", "</think>\n\nNext.", *extra)
+        wait_ready(port, proc, "lamina-server", log)
+        return port
+
+    def next_is_answered(self, port):
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(), {})
+        self.assertEqual((status, parse_body(ctype, raw)["choices"][0]["message"].get("content")), (200, "Next."))
+
+    def test_strict(self):
+        port = self.serve()
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(tools=TOOLS), {})
+        self.assertEqual((status, parse_body(ctype, raw)["error"].get("code")), (502, "tool_call_failed"), raw)
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(tools=TOOLS, stream=True), {})
+        events = parse_body(ctype, raw)
+        errors = [e["data"]["error"] for e in events if isinstance(e.get("data"), dict) and "error" in e["data"]]
+        self.assertEqual((status, events[-1].get("data"), len(errors)), (200, "[DONE]", 1), raw)
+        self.assertIn("does not parse", errors[0]["message"])
+        self.next_is_answered(port)
+
+    def test_recovery(self):
+        port = self.serve("--config", config_file(tool_call_recovery=True))
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(tools=TOOLS), {})
+        self.assertEqual((status, parse_body(ctype, raw)["choices"][0]["message"].get("content")), (200, self.CALL), raw)
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(tools=TOOLS, stream=True), {})
+        self.assertEqual((status, parse_body(ctype, raw)[-1].get("data")), (200, "[DONE]"), raw)
+        self.next_is_answered(port)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class HttpGolden(unittest.TestCase):
     def test_answers(self):
         want = json.loads(GOLDEN.read_text(encoding="utf-8"))

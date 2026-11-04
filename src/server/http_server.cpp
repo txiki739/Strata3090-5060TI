@@ -1365,6 +1365,9 @@ void post_responses(std::shared_ptr<Exchange> xp, json req) {
         } catch (const EngineNonFinite& e) {   // #879, twice: not the request's fault
             x.reply(503, responses::error_body(e.what(), "server_error", nullptr, "server_error"));
             return;
+        } catch (const ToolCallError& e) {
+            x.reply(502, responses::error_body(e.what(), "server_error", nullptr, "tool_call_failed"));
+            return;
         } catch (const std::invalid_argument& e) {   // the engine's ERR line
             x.reply(500, responses::error_body(e.what(), "server_error", nullptr, "server_error"));
             return;
@@ -1545,6 +1548,9 @@ void do_post(Service& svc, HttpServer& server, const httplib::Request& req, http
     } catch (const EngineNonFinite& e) {   // #879, twice: not the request's fault
         say(std::string("[lamina] 503: ") + e.what());
         x.reply(503, error_for(path, e.what(), "server_error", nullptr));
+    } catch (const ToolCallError& e) {   // the model's output, not the request
+        say(std::string("[lamina] 502: ") + e.what());
+        x.reply(502, error_for(path, e.what(), "server_error", "tool_call_failed"));
     } catch (const std::invalid_argument& e) {   // Python's ValueError
         say(std::string("[lamina] 400 invalid request: ") + e.what());
         x.reply(400, path == "/v1/responses" ? responses::error_body(e.what())

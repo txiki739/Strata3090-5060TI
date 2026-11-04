@@ -1574,8 +1574,8 @@ std::vector<Event> OutputParser::finish_call(std::string body) {
     ToolCall call;
     try {
         call = parse_tool_call(body, jget(schemas_, name));
-    } catch (const std::invalid_argument&) {
-        if (!recover_) throw;
+    } catch (const std::invalid_argument& e) {
+        if (!recover_) throw ToolCallError(std::string("the model wrote a tool call that does not parse (") + e.what() + ")");
         reset_scan();
         state_ = "content";
         return {{"content", track(bare ? body : std::string(kCallStart) + body + std::string(kCallEnd)), nullptr}};

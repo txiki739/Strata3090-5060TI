@@ -530,6 +530,17 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
         }
         done = true;
     };
+    // a callback that throws leaves the engine on this request: it is stopped and read to its DONE first, or the next
+    // request would read this one's tokens as its own
+    auto calling = [&](const auto& f) {
+        try {
+            return f();
+        } catch (...) {
+            stop_engine();
+            drain();   // a silent engine's error replaces the callback's
+            throw;
+        }
+    };
     while (true) {
         double wait = 10.0;
         if (allow > 0) {
@@ -549,7 +560,7 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
             }
             if (since(beat) >= 10.0) {
                 beat = Clock::now();
-                if (!on_beat()) {
+                if (!calling(on_beat)) {
                     stop_engine();
                     drain();
                     return;
@@ -573,7 +584,7 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
         if (starts_with(l, "T ")) {
             allow = silence;
             sent.push_back((int32_t) std::atoi(l.c_str() + 2));
-            if (cancel.is_set() || !on_token(sent.back())) {
+            if (cancel.is_set() || !calling([&] { return on_token(sent.back()); })) {
                 stop_engine();
                 drain();
                 return;
@@ -589,7 +600,7 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
                 read_to = progress->first;
                 if (silence > 0 && rate > 0 && chunk > 0) allow = std::max(silence, kPpSlack * (double) chunk / rate);
             }
-            if (cancel.is_set() || !on_beat()) {
+            if (cancel.is_set() || !calling(on_beat)) {
                 stop_engine();
                 drain();
                 return;
