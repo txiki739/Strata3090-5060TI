@@ -38,7 +38,8 @@ public:
     bool submit(uint64_t offset, void* buffer, uint32_t length, uint64_t tag, std::string& err);
 
     /// Wait for up to `max` completions; returns how many were written to `out`. `timeout_ms` < 0 waits
-    /// forever; 0 polls. A `wake()` shows up as one completion with tag `WAKE_TAG`.
+    /// forever; 0 polls. A `wake()` shows up as one completion with tag `WAKE_TAG` where the call has room for
+    /// it besides the reads' completions.
     int wait(Completion* out, int max, int timeout_ms);
 
     /// Make a thread blocked in `wait` return (thread-safe). Used to hand it newly queued work.

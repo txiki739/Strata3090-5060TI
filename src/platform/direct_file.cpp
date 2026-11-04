@@ -235,11 +235,14 @@ int DirectFile::wait(Completion* out, int max, int timeout_ms) {
     std::lock_guard<std::mutex> lk(impl_->mu);
     for (ULONG i = 0; i < got; ++i) {
         if (entries[i].lpOverlapped == nullptr) {          // a wake() packet (or an immediate completion's nudge)
-            while (n < max && !impl_->immediate.empty()) {
+            // the batch's later entries are off the port and go out now: room for them first (an immediate
+            // completion pushed after the drain above, its nudge among 63 reads, made 65 of 64); the rest wait
+            const int room = max - (int) (got - i - 1);
+            while (n < room && !impl_->immediate.empty()) {
                 out[n++] = impl_->immediate.front();
                 impl_->immediate.pop_front();
             }
-            if (n < max) out[n++] = Completion{WAKE_TAG, 0, true};
+            if (n < room) out[n++] = Completion{WAKE_TAG, 0, true};
             continue;
         }
         Req* r = (Req*) entries[i].lpOverlapped;
