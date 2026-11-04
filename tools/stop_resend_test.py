@@ -7,7 +7,7 @@ against a running server: stream an answer, read a few lines, close the connecti
 ~0.4 s (sometimes not at all, sometimes a second request already running), send the edited prompt, and check the
 answer.  Run the engine with LAMINA_DBG_NAN=1 to get the first non-finite layer named in its log.
 
-  LAMINA_KEY=... python3 tools/stop_resend_test.py http://127.0.0.1:8090 [rounds=40] [seed=1]
+  LAMINA_API_KEY=... python3 tools/stop_resend_test.py http://127.0.0.1:8090 [rounds=40] [seed=1]
 
 Exit 0 when every answer was real text, 1 otherwise.
 """
@@ -23,7 +23,7 @@ import urllib.request
 BASE = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://127.0.0.1:8080"
 ROUNDS = int(sys.argv[2]) if len(sys.argv) > 2 else 40
 SEED = int(sys.argv[3]) if len(sys.argv) > 3 else 1
-KEY = os.environ.get("LAMINA_KEY", "")
+KEY = os.environ.get("LAMINA_API_KEY", "")
 URL = BASE + "/v1/chat/completions"
 
 LONG = ["Describe the weather in Montpellier in great detail, at length.",

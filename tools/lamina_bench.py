@@ -641,6 +641,16 @@ def collect_machine(base: str, key: str, cfg: dict | None, gpu_arg: str | None =
     }
 
 
+def any_ok(out: dict) -> bool:
+    """whether a request of the run succeeded (the tests keep their failed requests too)"""
+    rows = list(out["chat"].get("requests", []))
+    for v in out["prompts"].values():
+        rows += v.get("requests", [])
+    for turns in out["agent"].get("sessions", []):
+        rows += turns
+    return any(r.get("ok") for r in rows)
+
+
 # --------------------------------------------------------------------------------------------------- the server
 def find_configs(folder: Path = ROOT) -> list[Path]:
     out = []
@@ -651,7 +661,8 @@ def find_configs(folder: Path = ROOT) -> list[Path]:
             c = json.loads(p.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             continue
-        if isinstance(c, dict) and c.get("exe") and isinstance(c.get("args"), list):
+        # the server runs the engine itself: a config names its model in "args" (--native), not an "exe"
+        if isinstance(c, dict) and isinstance(c.get("args"), list) and "--native" in c["args"]:
             out.append(p)
     return sorted(out, key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -943,7 +954,8 @@ def main(argv=None) -> int:
     ap.add_argument("--url", help="use the server already running at this address (http://127.0.0.1:8080) instead of starting one")
     ap.add_argument("--port", type=int, help="the port to start the server on (default: the config's)")
     ap.add_argument("--gpu", help="start the server on this GPU only (as the server's --gpu)")
-    ap.add_argument("--api-key", default=os.environ.get("LAMINA_KEY", ""), help="the server's API key, if it has one (or LAMINA_KEY)")
+    ap.add_argument("--api-key", default=os.environ.get("LAMINA_API_KEY", ""),
+                    help="the server's API key, if it has one (or LAMINA_API_KEY, as the server reads it)")
     ap.add_argument("--runs", type=int, default=3, help="runs per test (default 3)")
     ap.add_argument("--clients", type=int, default=0, metavar="N", help="also send N requests at once")
     ap.add_argument("--long", action="store_true", help="also a prompt of about 32,768 tokens")
@@ -1039,7 +1051,7 @@ def main(argv=None) -> int:
         say(f"\nReport: {shown / 'README.md'}\nShare it: paste README.md into an issue at "
             f"https://github.com/eddoursul/Lamina/issues. Home folders, user and host names and IP addresses are already "
             f"replaced; read it once before you share it.")
-        return 1 if out["failures"] and not any(out[k] for k in ("chat", "prompts", "agent")) else 0
+        return 0 if any_ok(out) or not out["failures"] else 1
     finally:
         if started:
             stop_server(proc)

@@ -89,7 +89,7 @@ def main():
     ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--words", type=int, default=800, help="the essay length asked for (longer = longer prompt? no: the answer)")
     ap.add_argument("--model", default="lamina")
-    ap.add_argument("--key", default=os.environ.get("LAMINA_KEY", ""))
+    ap.add_argument("--key", default=os.environ.get("LAMINA_API_KEY", ""))
     ap.add_argument("--nonce", default=str(int(time.time())), help="prefix of the per-request nonce (every round reads fresh prompts); '' = identical prompts every round; fix it to compare two runs")
     ap.add_argument("--think", action="store_true")
     ap.add_argument("--stagger", type=float, default=0.0, help="seconds between the starts of the clients of a burst")
