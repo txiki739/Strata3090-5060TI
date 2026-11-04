@@ -1217,10 +1217,10 @@ ExpertMath expert_math() noexcept { return g_expert_math; }
 int gpu_expert_act(int cpu_act) noexcept { return g_expert_math == ExpertMath::Exact ? cpu_act : 9; }
 
 bool native_expert_exact_supported(int gu_type, int d_type, int gu_act, int d_act) noexcept {
-    // native_expert_grouped's contract dispatch: Q8_K gate/up kernels, then the contract down kernels
+    // native_expert_grouped's contract dispatch: Q8_K gate/up kernels, then the contract down kernels.  A Q4_K / Q5_K
+    // down's Q8_K hidden is not among them: the gate/up kernel writes Q8_0 or Q8_1 (n_ff 640 has no K-quant down)
     const bool gu = gu_act == 15 && (gu_type == 12 || gu_type == 13);
-    const bool dn = (d_act == 8 && d_type == 8) || (d_act == 9 && d_type == 7) ||
-                    (d_act == 15 && (d_type == 12 || d_type == 13));
+    const bool dn = (d_act == 8 && d_type == 8) || (d_act == 9 && d_type == 7);
     return gu && dn;
 }
 
@@ -1294,6 +1294,12 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     if (L.n_ff % 32 != 0 || L.n_embd % (DOWN_WARPS * DOWN_ROWS) != 0) {
         std::fprintf(stderr, "native_expert_grouped: n_ff %lld / n_embd %lld do not divide into the kernels' rows\n",
                      (long long) L.n_ff, (long long) L.n_embd);
+        std::exit(1);
+    }
+    // the Q8_1 kernels read their rows unpadded (n_embd / 32 blocks of 36 bytes); only the Q8_K ones take x_stride
+    if (L.gu_act != 15 && x_stride != (L.n_embd / 32) * 36) {
+        std::fprintf(stderr, "native_expert_grouped: q8_1 rows of %lld bytes, the kernels read %lld\n", (long long) x_stride,
+                     (long long) (L.n_embd / 32) * 36);
         std::exit(1);
     }
     cudaStream_t s = (cudaStream_t) stream;
