@@ -181,9 +181,13 @@ def check_range(status, content_range, start, end):
         raise IOError("range request answered with Content-Range %r, not %s..." % (content_range, want))
 
 
+UNPINNED = False   # LAMINA_ALLOW_UNPINNED=1 read the current files in the gone pinned revision's place (resolve_repo)
+
+
 def pinned():
-    """The tensors' hashes are the pinned revision's: they apply when this run reads that revision."""
-    return REPO == PINNED
+    """The tensors' hashes are the pinned revision's: they apply when this run reads that revision, or the current
+    files in its place (LAMINA_ALLOW_UNPINNED's fallback); not for another revision LAMINA_MTP_REVISION names."""
+    return REPO == PINNED or UNPINNED
 
 
 def sha256_of(path):
@@ -197,7 +201,7 @@ def sha256_of(path):
 def resolve_repo():
     """REPO.  When the pinned revision is gone from the repository (a 404 on its index) it stops, unless
     LAMINA_ALLOW_UNPINNED=1: then the current files are read (their tensors are still checked against the pinned SHA256)."""
-    global REPO
+    global REPO, UNPINNED
     try:
         req = urllib.request.Request(REPO + "model.safetensors.index.json", method="HEAD",
                                      headers={"User-Agent": "lamina-mtp-fetch"})
@@ -209,6 +213,7 @@ def resolve_repo():
             print("LAMINA_ALLOW_UNPINNED=1: the checkpoint's pinned revision %s is gone: reading its current files "
                   "(main); every tensor is still checked against the pinned SHA256" % REVISION, file=sys.stderr)
             REPO = REPO.replace("/resolve/%s/" % REVISION, "/resolve/main/")
+            UNPINNED = True
     except OSError:
         pass                                        # no answer: get() retries and reports it
     return REPO
@@ -294,13 +299,31 @@ def fetch(out, only):
             if want is None or digest == want:
                 break
             os.remove(path)                         # wrong bytes (#327): the whole tensor again, once
+            if attempt and UNPINNED:
+                sys.exit("%s: the checkpoint's current tensor is not the pinned revision's (sha256 %s, pinned %s): "
+                         "update Lamina" % (r["name"], digest, want))
             if attempt:
                 sys.exit("%s: sha256 %s is not the checkpoint's %s - the download source sends wrong data (a mirror "
                          "that ignores Range requests?)" % (r["name"], digest, want))
             print("%s: wrong bytes (sha256 %s...), fetching it again" % (r["name"], digest[:12]), file=sys.stderr)
         manifest.append(dict(r, file=os.path.relpath(path, out), sha256=digest))
+    if only:
+        manifest = merged_manifest(os.path.join(out, "mtp-manifest.json"), manifest, rows)
     with open(os.path.join(out, "mtp-manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
+
+
+def merged_manifest(path, fetched, rows):
+    """fetch --only: the tensors fetched now in place of their entries of the manifest at `path`, the others kept, in
+    the inventory's order (the manifest held only the subset)."""
+    by = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            by = {m["name"]: m for m in json.load(f) if isinstance(m, dict) and "name" in m}
+    except (OSError, ValueError):
+        pass
+    by.update({m["name"]: m for m in fetched})
+    return [by[r["name"]] for r in rows if r["name"] in by]
 
 
 def verify(out):
