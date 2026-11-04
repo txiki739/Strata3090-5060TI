@@ -494,6 +494,7 @@ void Service::run_inner(const std::vector<int32_t>& ids, bool thinking, const js
     json* tr = trace;
     const double waiting = mono_s();
     std::optional<double> first_engine_token_s;
+    bool first_token_noted = false;   // the record's first_token_s: read and written under status_mu, once
     const bool par = engine->batch() > 0;
     json own_st = json::object();
     std::deque<std::pair<double, int64_t>> own_rate;
@@ -728,9 +729,11 @@ void Service::run_inner(const std::vector<int32_t>& ids, bool thinking, const js
                     const auto it = terminal_requests.find(request_id);
                     if (it != terminal_requests.end()) it->second["first_engine_token_s"] = *first_engine_token_s;
                 }
-                if (tr != nullptr && jget(*tr, "first_token_s").is_null()) {
+                if (tr != nullptr && !first_token_noted) {   // (the client watch writes the record meanwhile)
+                    first_token_noted = true;
                     std::lock_guard<std::mutex> lk(status_mu);
-                    (*tr)["first_token_s"] = py_round(mono_s() - (*tr)["_clock"].get<double>(), 3);
+                    if (jget(*tr, "first_token_s").is_null())
+                        (*tr)["first_token_s"] = py_round(mono_s() - (*tr)["_clock"].get<double>(), 3);
                 }
                 if (stop_ids.count(t)) {
                     if (force && parser.state() == "reasoning" && parser.buf() == kThinkEnd) {
