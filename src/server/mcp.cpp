@@ -701,15 +701,16 @@ bool McpServer::start_locked(Cancel* cancel) {
         t->close();
         throw;
     } catch (const std::exception& e) {   // McpError (anything else would be a failed start as well)
+        bool listed;   // its tools from an earlier start stay: a call to one starts it again (at most every 10 s)
         {
             std::lock_guard<std::mutex> lk(state_mu);
             status = "failed";
             error = e.what();
-            tools = json::array();
+            listed = !tools.empty();
         }
         t->close();
         say("[lamina] MCP server " + py_repr_str(name) + " did not start: " + e.what() +
-            ". Its tools are left out; the chat works without them.");
+            (listed ? ". Its tools stay listed; a call to one tries again." : ". Its tools are left out; the chat works without them."));
         return false;
     }
 }
@@ -856,8 +857,8 @@ McpRoutes McpHub::routes() {
     for (const auto& s : servers) {
         json listed;
         {
-            std::lock_guard<std::mutex> lk(s->state_mu);
-            if (s->status != "ready" && s->status != "stopped") continue;
+            std::lock_guard<std::mutex> lk(s->state_mu);   // a failed one: the tools of its last start, if any
+            if (s->status != "ready" && s->status != "stopped" && s->status != "failed") continue;
             listed = s->tools;
         }
         for (const auto& t : listed) {
