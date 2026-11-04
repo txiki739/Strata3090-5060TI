@@ -31,10 +31,11 @@ void iq_mmvq_il(int ggml_type, const void* w, const void* x_q8_1, const void* x_
 /// Dequantize `n` contiguous values (n a multiple of 256) to fp16 / fp32.
 void iq_dequant_f16(int ggml_type, const void* src, int64_t n, uint16_t* dst, void* stream);
 void iq_dequant_f32(int ggml_type, const void* src, int64_t n, float* dst, void* stream);
-/// Rows `tokens[0..n_tok)` (device ids) of a GGUF embedding table (`row_bytes` per row; the table may be mapped
-/// host memory) dequantized to fp32, `n_embd` per row (a multiple of 256).
-void iq_embed_rows(int ggml_type, const void* table, size_t row_bytes, const int32_t* tokens, int64_t n_tok,
-                   int64_t n_embd, float* out, void* stream);
+/// Rows `tokens[0..n_tok)` (device ids) of a GGUF embedding table of `n_rows` rows (`row_bytes` each; the table may
+/// be mapped host memory) dequantized to fp32, `n_embd` per row (a multiple of 256); an id outside the table (-1:
+/// a pick of no finite logit) gives a row of zeros.
+void iq_embed_rows(int ggml_type, const void* table, size_t row_bytes, int64_t n_rows, const int32_t* tokens,
+                   int64_t n_tok, int64_t n_embd, float* out, void* stream);
 /// iq_dequant_gu_f16 and iq_dequant_f16 (the down matrix) of n experts in one launch: expert i's blob at blobs[i]
 /// (a DEVICE array), its gate/up into gu + i * 2 * n_ff * n_embd and its down into dn + i * n_embd * n_ff.
 void iq_dequant_experts_f16(int gu_type, int d_type, const uint8_t* const* blobs, int n, size_t up_off, size_t down_off,

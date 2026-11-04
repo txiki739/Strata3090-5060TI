@@ -1139,21 +1139,26 @@ void iq_dequant_f16(int t, const void* src, int64_t n, uint16_t* dst, void* stre
 }
 
 namespace {
-__global__ void embed_rows_kernel(int ty, const uint8_t* __restrict__ table, size_t row_bytes,
+__global__ void embed_rows_kernel(int ty, const uint8_t* __restrict__ table, size_t row_bytes, int64_t n_rows,
                                   const int32_t* __restrict__ tokens, int64_t n_embd, float* __restrict__ y) {
     const int t = blockIdx.y;
     const int64_t b = blockIdx.x;
-    const uint8_t* row = table + (size_t) tokens[t] * row_bytes;
-    dq_dispatch<float>(ty, row, b, y + (size_t) t * n_embd + b * QK_K, threadIdx.x);
+    const int32_t tok = tokens[t];
+    float* out = y + (size_t) t * n_embd + b * QK_K;
+    if (tok < 0 || tok >= n_rows) {   // no row: zeros, not a read outside the table
+        for (int i = (int) threadIdx.x; i < QK_K; i += (int) blockDim.x) out[i] = 0.f;
+        return;
+    }
+    dq_dispatch<float>(ty, table + (size_t) tok * row_bytes, b, out, threadIdx.x);
 }
 }  // namespace
 
-void iq_embed_rows(int t, const void* table, size_t row_bytes, const int32_t* tokens, int64_t n_tok, int64_t n_embd,
-                   float* out, void* stream) {
+void iq_embed_rows(int t, const void* table, size_t row_bytes, int64_t n_rows, const int32_t* tokens, int64_t n_tok,
+                   int64_t n_embd, float* out, void* stream) {
     if (n_tok <= 0) return;
     if (n_embd % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_embed_rows: bad arguments\n"); std::exit(1); }
     embed_rows_kernel<<<dim3((unsigned) (n_embd / 256), (unsigned) n_tok), 32, 0, (cudaStream_t) stream>>>(
-        t, (const uint8_t*) table, row_bytes, tokens, n_embd, out);
+        t, (const uint8_t*) table, row_bytes, n_rows, tokens, n_embd, out);
     check("iq_embed_rows");
 }
 

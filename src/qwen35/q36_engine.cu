@@ -717,7 +717,7 @@ __global__ void k_argmax(const float* x, int n, int32_t* out, float* pv, int32_t
         __syncthreads();
     }
     if (threadIdx.x == 0) {
-        if (stage2) *out = bi[0];
+        if (stage2) *out = bi[0] == 0x7fffffff ? -1 : bi[0];   // -1: no finite logit (a NaN row)
         else { pv[blockIdx.x] = bv[0]; pi[blockIdx.x] = bi[0]; }
     }
 }
@@ -1060,6 +1060,7 @@ struct Model {
     const uint8_t* embd_mtp = nullptr;   // the MTP block's: embd, or its copy on the last stage's GPU
     int embd_type = -1;
     size_t embd_row = 0;
+    int64_t embd_rows = 0;
     // the layer split (--second-gpu): stage s runs the layers below stage_end[s] (from stage_end[s - 1]) on GPU
     // stage_dev[s]; the embedding is on the first stage's GPU, the output norm, the head and the MTP block on the last's
     std::vector<int> stage_dev;
@@ -1420,6 +1421,11 @@ bool load(const std::string& path, Model& m, std::string& err, bool want_mtp, co
         size_t s = 0;
         const lamina::TensorInfo* t = find("token_embd.weight", s);
         m.embd_type = (int) t->type;
+        m.embd_rows = (int64_t) t->shape[1];
+        if (!K::iq_supported(m.embd_type) || t->shape[0] % 256 != 0) {   // iq_embed_rows' types (it ends the process)
+            std::fprintf(stderr, "lamina: token_embd.weight is %s, which the GPU embedding does not take\n", t->type_name());
+            throw Fatal{1};
+        }
         m.embd_row = row_bytes(m.embd_type, (int64_t) t->shape[0]);
         const uint64_t nb = lamina::tensor_payload_bytes(*t);
         uint8_t* d = nullptr;
@@ -1858,11 +1864,11 @@ struct Engine {
         }
         sess.resize((size_t) n_sess);
         gsets.resize((size_t) n_sess);
-        {   // the sessions' caches: said before they fail (a slot's K / V at the context, FP16, for the attention layers and
-            // the MTP block, and its recurrent state)
+        {   // the sessions' caches: said before they fail (a slot's K / V at the context, in the --kv format, for the
+            // attention layers and the MTP block, and its recurrent state)
             size_t n_attn = m->has_mtp ? 1 : 0, n_gdn = 0;
             for (const Layer& L : m->layers) (L.attn ? n_attn : n_gdn) += 1;
-            const size_t per = (size_t) (g.n_head_kv * g.head_dim * 2 * 2) * (size_t) ctx * n_attn +
+            const size_t per = (size_t) g.n_head_kv * m->kv_row() * 2 * (size_t) ctx * n_attn +
                                (size_t) g.ssm_v_heads * g.ssm_state_size * g.ssm_state_size * 4 * n_gdn;
             size_t fr0 = 0, tot0 = 0;
             CK(cudaMemGetInfo(&fr0, &tot0));
@@ -2554,7 +2560,7 @@ struct Engine {
             stream_begin(seq);
         }
         if (l0 == 0) {
-            K::iq_embed_rows(m->embd_type, m->embd, m->embd_row, tok, T, N, x, st);
+            K::iq_embed_rows(m->embd_type, m->embd, m->embd_row, m->embd_rows, tok, T, N, x, st);
             if (map_on) k_put_rows<<<T, kThreads, 0, st>>>(x, d_img, d_map, N);   // a picture's cells take its rows
         }
         // the stage's first layer's norm (later layers: from k_moe_out; a later stage: over the residual handed in), its
@@ -2652,7 +2658,7 @@ struct Engine {
         const auto& g = m->g;
         const int N = (int) g.n_embd;
         if (main_hybrid && lhy(m->layers.size()) && T > hybrid_t && use_mmq) stream_begin({(int) m->layers.size()});
-        K::iq_embed_rows(m->embd_type, m->embd_mtp, m->embd_row, tok_m, T, N, y, st);
+        K::iq_embed_rows(m->embd_type, m->embd_mtp, m->embd_row, m->embd_rows, tok_m, T, N, y, st);
         if (map_on) k_put_rows<<<T, kThreads, 0, st>>>(y, d_img, d_map, N);
         k_rms_ld<<<T, kThreads, 0, st>>>(y, N, m->mtp_enorm, mtp_cat, 2 * N, N, m->eps);              // [e | ...]
         k_rms_ld<<<T, kThreads, 0, st>>>(seeds, N, m->mtp_hnorm, mtp_cat + N, 2 * N, N, m->eps);      // [... | h]
@@ -3171,7 +3177,7 @@ struct Engine {
         rows_G = T;
         rows_deferred = true;
         run_graph_key(3000 + T, [&] {
-            K::iq_embed_rows(m->embd_type, m->embd, m->embd_row, tok_m, T, N, y, st);
+            K::iq_embed_rows(m->embd_type, m->embd, m->embd_row, m->embd_rows, tok_m, T, N, y, st);
             k_rms_ld<<<T, kThreads, 0, st>>>(y, N, m->mtp_enorm, mtp_cat, 2 * N, N, m->eps);                 // [e | ...]
             k_rms_ld<<<T, kThreads, 0, st>>>(mtp_seed(), N, m->mtp_hnorm, mtp_cat + N, 2 * N, N, m->eps);   // [... | h]
             mm(m->eh_proj, mtp_cat, x, T);
@@ -3558,7 +3564,9 @@ struct Sampling {
     bool needs_logits() const { return temperature > 0.f || repeat != 1.f || freq != 0.f || present != 0.f; }
 };
 
+/// -1 when the row holds a non-finite logit (the request ends "nonfinite")
 int sample(std::vector<float>& lg, const Sampling& s, const std::vector<int32_t>& hist, std::mt19937_64& rng) {
+    if (!std::all_of(lg.begin(), lg.end(), [](float v) { return std::isfinite(v); })) return -1;
     if (s.last_n != 0 && (s.repeat != 1.f || s.freq != 0.f || s.present != 0.f)) {
         std::map<int, int> cnt;
         const size_t from = s.last_n < 0 || (size_t) s.last_n >= hist.size() ? 0 : hist.size() - (size_t) s.last_n;
@@ -3797,6 +3805,17 @@ struct Serve {
             int y = y0;
             for (int j = 0; j < rows_kept; ++j) {
                 if (j == 1) y = E.rows_pick[r0 + 1];
+                if (y < 0) {   // no finite logit: the slot ends, and its state is not continued
+                    ss.live.clear();
+                    ss.imgs.clear();
+                    serve_print("BDONE %d %lld nonfinite %.1f\n", b, (long long) sl.produced, ms_since(sl.t0));
+                    std::fprintf(stderr, "lamina batch: slot %d: non-finite logits: the request ends\n", b);
+                    sl.active = false;
+                    ss.active = false;
+                    --n_active;
+                    done = true;
+                    break;
+                }
                 ss.live.push_back(fed[j]);
                 serve_print("BT %d %d\n", b, y);
                 ++sl.produced;
@@ -4096,6 +4115,15 @@ struct Serve {
                 E.host_logits(lg);
                 nx = sample(lg, smp, hist, rng);
             }
+            if (nx < 0) {   // no finite logit: the slot is not taken, and its state is not continued
+                ss.live.clear();
+                ss.imgs.clear();
+                std::fprintf(stderr, "lamina batch: slot %d: non-finite logits after the prompt: the request ends\n", slot);
+                serve_print("DONE 0 %zu %.1f %.1f nonfinite 0 0 %zu 0 0 0 0 0.0 %lld 0\n", ids.size(), prompt_ms,
+                            ms_since(d0), reuse, (long long) fresh);
+                serve_print("BADM %d 0\n", slot);
+                return;
+            }
             serve_print("T %d\n", nx);
             ++produced;
             hist.push_back(nx);
@@ -4130,6 +4158,7 @@ struct Serve {
                 nx = sample(lg, smp, hist, rng);
             }
             auto emit = [&](int t) {   // false: the answer ends here
+                if (t < 0) { finish = "nonfinite"; return false; }   // no finite logit: nothing of the row goes out
                 serve_print("T %d\n", t);
                 ++produced;
                 hist.push_back(t);
@@ -4164,6 +4193,12 @@ struct Serve {
             ss.live.push_back(nx);
             fix.clear();
             if (!smp.needs_logits()) nx = E.greedy();
+        }
+        if (std::strcmp(finish, "nonfinite") == 0) {   // the state holds the non-finite rows: not continued
+            ss.live.clear();
+            ss.imgs.clear();
+            std::fprintf(stderr, "lamina serve: non-finite logits: the request ends, and the next one reads its prompt from "
+                         "the start\n");
         }
         E.sess[(size_t) E.cur].pos = E.pos;
         const double decode_ms = ms_since(d0);

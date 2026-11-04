@@ -173,7 +173,7 @@ bool NativeEmbed::load(const std::vector<std::string>& shards, int64_t n_embd, i
 }
 
 void NativeEmbed::gather_dev(const int32_t* tokens, int64_t n_tok, float* out, void* stream) const {
-    lamina::kernels::iq_embed_rows(type_, dev_, row_, tokens, n_tok, n_embd_, out, stream);
+    lamina::kernels::iq_embed_rows(type_, dev_, row_, n_vocab_, tokens, n_tok, n_embd_, out, stream);
 }
 
 }  // namespace lamina::core
