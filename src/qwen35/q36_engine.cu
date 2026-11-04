@@ -2050,7 +2050,16 @@ struct Engine {
     // ---- decode kernels of this engine (q36_kernels.cuh), each the old kernel's bits (LAMINA_Q36_VERIFY=1 compares)
     bool fast_k = std::getenv("LAMINA_Q36_OLD_KERNELS") == nullptr;
     bool verify_k = std::getenv("LAMINA_Q36_VERIFY") != nullptr;
-    float* vbuf = nullptr;                       // verify scratch
+    float* vbuf = nullptr;                       // verify scratch (vscratch)
+    size_t vbuf_n = 0;
+    /// the checks' scratch, of at least n floats: a bigger one when a check needs it (each goes at the end)
+    float* vscratch(size_t n) {
+        if (n > vbuf_n) {
+            CK(dmalloc((void**) &vbuf, n * 4));
+            vbuf_n = n;
+        }
+        return vbuf;
+    }
     long long v_calls = 0, v_bad = 0;
     std::map<std::string, long long> v_by;   // mismatches per check
     void verify_cmp(const char* what, const float* a, const float* b, size_t n, const std::string& tag = "") {
@@ -2085,14 +2094,14 @@ struct Engine {
         switch (T) { Q36_Q8(1) Q36_Q8(2) Q36_Q8(3) Q36_Q8(4) Q36_Q8(5) Q36_Q8(6) Q36_Q8(7) Q36_Q8(8) }
 #undef Q36_Q8
         if (verify_k) {
-            if (!vbuf) CK(dmalloc((void**) &vbuf, (size_t) 8 * 16384 * 4));
+            float* vb = vscratch((size_t) T * w.n_out);
             const size_t qb = K::native_q8_1_bytes(w.n_in, 1);
             for (int c0 = 0; c0 < T; c0 += 8) {
                 const int nc = std::min(8, T - c0);
-                K::native_mmvq(w.type, w.d, (const char*) xq81 + (size_t) c0 * qb, vbuf + (size_t) c0 * w.n_out, w.n_in, w.n_out,
+                K::native_mmvq(w.type, w.d, (const char*) xq81 + (size_t) c0 * qb, vb + (size_t) c0 * w.n_out, w.n_in, w.n_out,
                                nc, st);
             }
-            verify_cmp("q8_small", out, vbuf, (size_t) T * w.n_out,
+            verify_cmp("q8_small", out, vb, (size_t) T * w.n_out,
                        " n_in " + std::to_string(w.n_in) + " n_out " + std::to_string(w.n_out) + " T " + std::to_string(T));
         }
         return true;
@@ -2193,10 +2202,9 @@ struct Engine {
         il_stale(q8);
 #undef Q36_SH
         if (verify_k) {
-            if (!vbuf) CK(dmalloc((void**) &vbuf, (size_t) 8 * 16384 * 4));
             if (!vq) CK(dmalloc(&vq, K::native_q8_1_bytes((int) m->g.n_embd, 1) * 8));
-            float* vg = vbuf;
-            float* vu = vbuf + (size_t) 8 * FS;
+            float* vg = vscratch((size_t) 16 * FS);
+            float* vu = vg + (size_t) 8 * FS;
             mmq_ref(a, xq, vg, T);
             mmq_ref(b, xq, vu, T);
             K::native_swiglu_quantize_q8_1(vg, vu, vq, FS, T, st);
@@ -2276,9 +2284,9 @@ struct Engine {
         grouped_by_route = true;
         if (verify_k) {
             // the old top-k into scratch, the ids / weights compared, then the old grouping of the new ids
-            if (!vbuf) CK(dmalloc((void**) &vbuf, (size_t) 8 * 16384 * 4));
-            int32_t* vid = (int32_t*) (vbuf + 8 * 8192);
-            float* vw = vbuf + 8 * 8192 + 64;
+            float* vs = vscratch((size_t) 2 * T * Kp);
+            int32_t* vid = (int32_t*) vs;
+            float* vw = vs + (size_t) T * Kp;
             K::native_router_topk(logits_r, vid, vw, 256, Kp, T, st);
             verify_cmp("route ids", (const float*) ids, (const float*) vid, (size_t) T * Kp, " T " + std::to_string(T));
             verify_cmp("route weights", ewts, vw, (size_t) T * Kp, " T " + std::to_string(T));
@@ -4032,7 +4040,7 @@ struct Serve {
             serve_print("ERR this engine was started without --vision\n");
             return;
         }
-        if ((int64_t) ids.size() + max_new > E.ctx) {
+        if ((int64_t) ids.size() > E.ctx || max_new > (long long) E.ctx - (long long) ids.size()) {
             serve_print("ERR prompt (%zu tokens) + max_new (%lld) exceeds the context (%d)\n", ids.size(), max_new, E.ctx);
             return;
         }
@@ -4047,6 +4055,10 @@ struct Serve {
         stop.store(false);
         // ---- the session: the held state continues when the request extends it (the recurrent state cannot step back)
         const int s = adm ? slot : pick_session(ids, ir.imgs);
+        if (s < 0) {   // every session decodes in a slot: a request alone has none to run in
+            serve_print("ERR every session is busy (batch slots decoding)\n");
+            return;
+        }
         Engine::Sess& ss = E.sess[(size_t) s];
         size_t reuse = match_len(ss, ids, ir.imgs);
         if (adm) {   // another session holding more of this prompt (the conversation was read alone): copy its state
@@ -4505,6 +4517,10 @@ static int run_engine(int argc, char** argv) {
     if (serve_mode) return serve(E);
     if (bench_pp > 0 || bench_tg > 0) {
         // llama-bench's shapes: a prompt of bench_pp tokens from a fresh state, then bench_tg tokens one at a time
+        if (bench_tg < 0 || (int64_t) std::max(bench_pp, 1) + bench_tg + 8 > E.ctx) {
+            std::fprintf(stderr, "lamina: --bench-pp %d and --bench-tg %d exceed the context (%d)\n", bench_pp, bench_tg, E.ctx);
+            return 2;
+        }
         std::vector<int32_t> toks((size_t) std::max(bench_pp, 1));
         std::mt19937 rng(1234);
         for (auto& t : toks) t = (int32_t) (rng() % 200000u);
@@ -4531,6 +4547,17 @@ static int run_engine(int argc, char** argv) {
     const std::vector<int32_t> prompt = parse_ids(tokens.c_str()), forced = parse_ids(force.c_str());
     if (prompt.empty()) { std::fprintf(stderr, "lamina: --tokens, --serve or --bench-pp is required\n"); return 2; }
     if (!forced.empty()) n_gen = (int) forced.size() + 1;
+    for (const std::vector<int32_t>* v : {&prompt, &forced})   // as a request's: the vocabulary's ids, the context
+        for (const int32_t t : *v)
+            if (t < 0 || t >= m.g.n_vocab) {
+                std::fprintf(stderr, "lamina: the token %d is outside the vocabulary (%lld)\n", (int) t, (long long) m.g.n_vocab);
+                return 2;
+            }
+    if (n_gen < 0 || (int64_t) prompt.size() + n_gen + 8 > E.ctx) {
+        std::fprintf(stderr, "lamina: the prompt (%zu tokens) and %d generated exceed the context (%d)\n", prompt.size(),
+                     n_gen, E.ctx);
+        return 2;
+    }
     FILE* ff = dump_full.empty() ? nullptr : std::fopen(dump_full.c_str(), "wb");
     std::vector<float> lg;
     std::vector<int32_t> gen;
