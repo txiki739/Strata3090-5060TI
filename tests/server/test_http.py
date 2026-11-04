@@ -532,6 +532,25 @@ class SchemaBudget(unittest.TestCase):
         self.assertEqual(status, 502, message)
         self.assertIn("steps to check", message)
 
+    def test_unique_lists(self):
+        # draft-04's metaschema checks an enum's items for uniqueness: 40,000 lists sorted, not compared pairwise
+        port, proc, log = mock_server(self, "--script", '</think>\n\n{"a": [5]}')
+        wait_ready(port, proc, "lamina-server", log)
+
+        def schema(values):
+            return {"$schema": "http://json-schema.org/draft-04/schema#", "type": "object",
+                    "properties": {"a": {"enum": values}}}
+        body = {"model": "m", "messages": msgs(), "response_format": {"type": "json_schema",
+                                                                      "json_schema": {"name": "x", "schema": schema([[k] for k in range(40000)])}}}
+        t0 = time.time()
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", body, {})
+        self.assertLess(time.time() - t0, 5)
+        # the schema passed its checks: what refuses it then is its length in the mock's 32K context
+        self.assertIn("exceeds the context window", raw.decode(), raw)
+        status, message = self.ask(port, schema([[k] for k in range(100)] + [[7]]))
+        self.assertEqual(status, 400, message)
+        self.assertIn("non-unique", message)
+
     def test_pattern_memory(self):
         # a repeat of empty steps: each step one more choice and undo entry, gigabytes before the step budget
         port, proc, log = mock_server(self, "--script", '</think>\n\n{"a": "abc"}')

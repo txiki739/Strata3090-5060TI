@@ -703,9 +703,9 @@ bool js_equal(const Val& a, const Val& b, int frames) {
     return a.k == K::None && b.k == K::None;
 }
 
-/// sorted(): CPython's list.sort for fewer than 64 items (a run, then binary insertion), else a stable sort after
-/// checking that every pair orders
-std::vector<const Val*> py_sorted(const std::vector<Val>& items, bool lists) {
+/// sorted(): CPython's list.sort for fewer than 64 items (a run, then binary insertion), else a stable sort; a pair
+/// it compares that does not order raises Unordered, as list.sort's TypeError
+std::vector<const Val*> py_sorted(const std::vector<Val>& items) {
     std::vector<const Val*> a;
     a.reserve(items.size());
     for (const Val& v : items) a.push_back(&v);
@@ -733,9 +733,6 @@ std::vector<const Val*> py_sorted(const std::vector<Val>& items, bool lists) {
         }
         return a;
     }
-    if (lists)
-        for (size_t j = 0; j < n; ++j)
-            for (size_t m = j + 1; m < n; ++m) (void) lt(a[j], a[m]);
     std::stable_sort(a.begin(), a.end(), lt);
     return a;
 }
@@ -757,7 +754,7 @@ bool uniq(const std::vector<Val>& items, int frames) {
     }
     if (sortable) {
         try {
-            const std::vector<const Val*> sorted = py_sorted(items, kind == 2);
+            const std::vector<const Val*> sorted = py_sorted(items);
             for (size_t j = 1; j < sorted.size(); ++j)
                 if (js_equal(*sorted[j - 1], *sorted[j], frames)) return false;
             return true;
