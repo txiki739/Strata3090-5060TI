@@ -101,16 +101,6 @@ private:
     std::chrono::steady_clock::time_point at_{};
 };
 
-/// **THE RESERVATION IS A FICTION UNLESS THE HOST IS ACTUALLY PUT THERE.**
-///
-/// `CorePlacement` keeps the workers off the host's core so that the host loop can spin on `cudaEventQuery`
-/// without stealing a worker's cycles.  Nothing in the pool can enforce the other half of that, so this is it:
-/// the host loop calls this on entry and restores on exit.
-///
-/// MEASURED, and this is why it exists: the pool runs at **36.32 GB/s on 5 workers with nothing else running**
-/// - exactly 5/6 of L9's 44.14 on 6 - and at **26.9 GB/s inside the host loop**, where the unpinned spinning
-/// host is free to land on a worker's core or its SMT sibling.  That 1.35x is not the kernel.
-///
 /// A thread's affinity as it was: Windows its processor group and that group's mask, elsewhere every processor's
 /// bit (64 a word); `valid` false when it could not be read or changed.
 struct ThreadAffinity {
@@ -118,6 +108,17 @@ struct ThreadAffinity {
     uint16_t group = 0;
     std::vector<uint64_t> mask;
 };
+
+/// **THE RESERVATION IS A FICTION UNLESS THE HOST IS ACTUALLY PUT THERE.**
+///
+/// `CorePlacement` keeps the workers off the host's core so that the host loop can spin on `cudaEventQuery`
+/// without stealing a worker's cycles.  Nothing in the pool can enforce the other half of that, so this is it:
+/// the host loop calls this on entry and restores on exit (`HostPin`).
+///
+/// MEASURED, and this is why it exists: the pool runs at **36.32 GB/s on 5 workers with nothing else running**
+/// - exactly 5/6 of L9's 44.14 on 6 - and at **26.9 GB/s inside the host loop**, where the unpinned spinning
+/// host is free to land on a worker's core or its SMT sibling.  That 1.35x is not the kernel.
+///
 /// Pins the calling thread to `core` (a processor as physical_cores numbers them: Windows Group * 64 + bit) and
 /// returns the PREVIOUS affinity; pass it to `restore_thread_affinity`.
 ThreadAffinity pin_current_thread(int core);
