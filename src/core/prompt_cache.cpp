@@ -52,7 +52,20 @@ void* PromptCache::take_buffer() {
 }
 
 void PromptCache::give_back(void* h) {
-    if (h != nullptr) free_.push_back(h);
+    if (h == nullptr) return;
+    free_.push_back(h);
+    // idle, a buffer is outside the park's budget: no more are kept than the live chain can take at once (its chain
+    // and its end, the pinned ones), the pageable rest goes back to the system
+    for (size_t i = 0; free_.size() > (size_t) chain_cap_ + 1 && i < free_.size();) {
+        const auto o = std::find_if(owned_.begin(), owned_.end(), [&](const auto& b) { return b.first == free_[i]; });
+        if (o == owned_.end() || o->second) {
+            ++i;
+            continue;
+        }
+        std::free(o->first);
+        owned_.erase(o);
+        free_.erase(free_.begin() + (ptrdiff_t) i);
+    }
 }
 
 void PromptCache::release(Seq& seq, int64_t keep_upto) {
@@ -285,10 +298,11 @@ PromptCache::State PromptCache::state() const {
 std::string PromptCache::summary() const {
     char buf[256];
     std::snprintf(buf, sizeof buf,
-                  "live %lld cells, %zu checkpoints (%.0f MiB); %zu parked conversations (%.0f MiB, %zu evicted)",
+                  "live %lld cells, %zu checkpoints (%.0f MiB); %zu parked conversations (%.0f MiB, %zu evicted); "
+                  "%zu idle checkpoint buffers",
                   (long long) live_.tokens.size(), live_.ckpts.size(),
                   (double) live_.ckpts.size() * (double) ckpt_bytes_ / 1048576.0, parked_.size(),
-                  (double) parked_.bytes() / 1048576.0, parked_.evictions());
+                  (double) parked_.bytes() / 1048576.0, parked_.evictions(), free_.size());
     return buf;
 }
 
