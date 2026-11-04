@@ -214,14 +214,14 @@ int form_of(const std::string& name) {
     return -1;
 }
 
-// NATIVE_PLE_KEY: the PLE key encodings NativeDense serves from the GGUF (Q2_0, Q8_0, IQ3_XXS, IQ4_XS)
-const uint32_t kNativePleKey[] = {42, 8, 18, 23};
+/// MMVQ_TYPES: NativeHead's and NativeDense's (native_mmvq_supported), the types of the dense projections and the PLE
+/// key the engine serves from the GGUF (the prefill dequantizes each of them, dequant_f16)
+const uint32_t kMmvqTypes[] = {2, 6, 8, 11, 12, 13, 14, 20, 23, 42, 16, 17, 18, 21, 22, 29};
 
 /// native_problem: why the engine cannot serve the quantized tensor `name` from the GGUF, or "".  EMBED_TYPES are
-/// NativeEmbed's (iq_supported), MMVQ_TYPES NativeHead's and NativeDense's (native_mmvq_supported).
+/// NativeEmbed's (iq_supported).
 std::string native_problem(const std::string& name, uint32_t type) {
     static const uint32_t embed[] = {16, 17, 18, 20, 21, 22, 23, 19, 29, 42, 11, 12, 13, 14, 7, 8};
-    static const uint32_t mmvq[] = {2, 6, 8, 11, 12, 13, 14, 20, 23, 42, 16, 17, 18, 21, 22, 29};
     static const char* const dense[] = {".attn_qkv.weight", ".attn_gate.weight", ".ssm_out.weight",
                                         ".attn_q.weight", ".attn_k.weight", ".attn_v.weight", ".attn_output.weight",
                                         ".ffn_gate_shexp.weight", ".ffn_up_shexp.weight", ".ffn_down_shexp.weight"};
@@ -232,7 +232,7 @@ std::string native_problem(const std::string& name, uint32_t type) {
     } else if (name == "output.weight" || name == "blk.1.ple_key.weight" ||
                (starts_with(name, "blk.") &&
                 std::any_of(std::begin(dense), std::end(dense), [&](const char* d) { return ends_with(name, d); }))) {
-        if (one_of(type, mmvq)) return {};
+        if (one_of(type, kMmvqTypes)) return {};
         served = true;
     }
     return served ? name + " is " + type_str(type) + ", a type the engine has no kernels for"
@@ -529,7 +529,7 @@ bool PackImage::build(const std::string& gguf_first_shard, PackImage& out, std::
                 }
                 const int form = form_of(t.name);
                 const bool native =
-                    !is_float(t.type) && (form < 0 || (t.name == "blk.1.ple_key.weight" && one_of(t.type, kNativePleKey)));
+                    !is_float(t.type) && (form < 0 || (t.name == "blk.1.ple_key.weight" && one_of(t.type, kMmvqTypes)));
                 if (native) {
                     std::string why = native_problem(t.name, t.type);
                     if (!why.empty()) problems.push_back(std::move(why));
