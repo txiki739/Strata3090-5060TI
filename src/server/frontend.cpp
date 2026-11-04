@@ -1562,7 +1562,15 @@ std::vector<Event> OutputParser::finish(std::string_view reason) {
     }
     if (state_ == "call" && stream_tools_ && scall_ != nullptr) {
         append(scan());   // the output ended inside a call that was already announced
-        if (ss_ == "done") out.push_back({"tool_call", "", scall_});   // only its </tool_call> is missing
+        const long i = ss_ == "done" ? function_end(buf_) : -1;
+        if (i >= 0) {   // only its </tool_call> is missing: the call parsed (the streamed view holds no arguments)
+            const std::string body = buf_.substr(0, (size_t) i);
+            const std::string rest(strip(std::string_view(buf_).substr((size_t) i)));
+            buf_.clear();
+            append(finish_call(body));
+            if (!rest.empty() && !starts_with(kCallEnd, rest)) out.push_back({"content", track(rest), nullptr});
+            return out;
+        }
         buf_.clear();
         reset_scan();
         return out;

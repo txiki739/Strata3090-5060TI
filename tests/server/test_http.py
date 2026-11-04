@@ -534,6 +534,23 @@ class SchemaBudget(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class MissingCallEnd(unittest.TestCase):
+    """A whole call whose </tool_call> never comes (the turn ends, or max_tokens) keeps its arguments: Responses'
+    custom tools take theirs from the finished call."""
+
+    def test_custom_tool_input(self):
+        text = "<tool_call>\n<function=apply_patch>\n<parameter=input>\n*** Begin Patch\n*** End Patch\n</parameter>\n</function>"
+        port, proc, log = mock_server(self, "--script", "</think>\n\n" + text)
+        wait_ready(port, proc, "lamina-server", log)
+        body = {"model": "m", "input": "Patch it.", "tools": [{"type": "custom", "name": "apply_patch",
+                                                               "description": "Apply a patch to the files."}]}
+        status, ctype, raw = call(port, "POST", "/v1/responses", body, {})
+        self.assertEqual(status, 200, raw)
+        items = [i for i in parse_body(ctype, raw)["output"] if i.get("type") == "custom_tool_call"]
+        self.assertEqual([(i["name"], i["input"]) for i in items], [("apply_patch", "*** Begin Patch\n*** End Patch")])
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class HttpGolden(unittest.TestCase):
     def test_answers(self):
         want = json.loads(GOLDEN.read_text(encoding="utf-8"))
