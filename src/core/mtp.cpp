@@ -110,6 +110,18 @@ bool MtpDrafter::load(const std::string& rt_dir, const ModelGeometry& g, Session
         }
         std::vector<uint8_t> blob;
         if (!read_file(rt_dir + "/dense.bin", blob)) { err = "mtp: cannot read dense.bin"; return false; }
+        // each entry of its kind's size, aligned, inside dense.bin: a broken folder is refused, not read past
+        for (const Tensor& t : tensors_) {
+            const uint64_t n = t.rows > 0 && t.cols > 0 ? (uint64_t) t.rows * (uint64_t) t.cols : 0;
+            const uint64_t want = t.kind == "f32" ? n * 4 : t.kind == "bf16" ? n * 2
+                                  : t.kind == "q8_0" && t.cols % 32 == 0 ? n / 32 * 34 : 0;
+            if (want == 0 || t.bytes != want || t.off % 4 != 0 || t.off > blob.size() || t.bytes > blob.size() - t.off) {
+                err = "mtp: dense.txt's " + t.name + " (" + t.kind + " " + std::to_string(t.rows) + " x " +
+                      std::to_string(t.cols) + ", " + std::to_string(t.bytes) + " bytes at " + std::to_string(t.off) +
+                      ") is not a tensor of dense.bin's " + std::to_string(blob.size()) + " bytes";
+                return false;
+            }
+        }
         if (cudaMalloc((void**) &dense_, blob.size()) != cudaSuccess) { err = "mtp: dense weights do not fit"; return false; }
         cudaMemcpy(dense_, blob.data(), blob.size(), cudaMemcpyHostToDevice);
         vram_ += blob.size();
@@ -272,6 +284,15 @@ bool MtpDrafter::bind_head(const NativeHead* head, std::string& err) {
         std::vector<uint8_t> raw;
         if (read_file(rt_dir_ + "/draft_vocab.bin", raw) && raw.size() >= 4 && raw.size() % 4 == 0) {
             n_dvocab_ = (int64_t) (raw.size() / 4);
+            for (int64_t i = 0; i < n_dvocab_; ++i) {   // the head's rows they are gathered from
+                int32_t id = 0;
+                std::memcpy(&id, raw.data() + 4 * (size_t) i, 4);
+                if (id < 0 || id >= head->rows()) {
+                    err = "mtp: draft_vocab.bin holds the token " + std::to_string(id) + ", outside the head's " +
+                          std::to_string(head->rows()) + " rows";
+                    return false;
+                }
+            }
             const int64_t row_bytes = (int64_t) head->row_bytes();   // a vocabulary row of the native head
             if (cudaMalloc((void**) &dvocab_, raw.size()) != cudaSuccess ||
                 cudaMalloc((void**) &dhead_, (size_t) (n_dvocab_ * row_bytes)) != cudaSuccess) {
