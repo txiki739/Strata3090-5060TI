@@ -192,10 +192,22 @@ constexpr uint64_t kClosed = 1ull << 31;
 constexpr uint64_t kParked = kClosed - 1;
 constexpr uint64_t kEpoch = 1ull << 32;
 
+#if defined(_WIN32)
+/// a processor as physical_cores numbers it (Group * 64 + bit): its group and bit; with more than 64 logical
+/// processors SetThreadAffinityMask would set that bit in the thread's own group, another processor
+GROUP_AFFINITY group_affinity(int core) {
+    GROUP_AFFINITY g{};
+    g.Group = (WORD) (core / 64);
+    g.Mask = (KAFFINITY) 1 << (core % 64);
+    return g;
+}
+#endif
+
 void pin_this_thread(int core) {
     if (core < 0) return;
 #if defined(_WIN32)
-    SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR) 1 << (core & 63));
+    const GROUP_AFFINITY g = group_affinity(core);
+    SetThreadGroupAffinity(GetCurrentThread(), &g, nullptr);
 #else
     cpu_set_t set;
     CPU_ZERO(&set);
@@ -206,34 +218,41 @@ void pin_this_thread(int core) {
 
 }  // namespace
 
-long long pin_current_thread(int core) {
-    if (core < 0) return -1;
+ThreadAffinity pin_current_thread(int core) {
+    ThreadAffinity prev;
+    if (core < 0) return prev;
 #if defined(_WIN32)
-    // `SetThreadAffinityMask` RETURNS the previous mask, or 0 on failure - so 0 doubles as the error, which is
-    // why the caller must not treat it as a restorable value.
-    const DWORD_PTR prev = SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR) 1 << (core & 63));
-    return prev == 0 ? -1 : (long long) prev;
+    const GROUP_AFFINITY g = group_affinity(core);
+    GROUP_AFFINITY old{};
+    if (!SetThreadGroupAffinity(GetCurrentThread(), &g, &old)) return prev;
+    prev.group = old.Group;
+    prev.mask = {(uint64_t) old.Mask};
 #else
-    cpu_set_t prev;
-    CPU_ZERO(&prev);
-    if (pthread_getaffinity_np(pthread_self(), sizeof prev, &prev) != 0) return -1;
-    unsigned long mask = 0;
-    for (int i = 0; i < CPU_SETSIZE && i < 64; ++i)
-        if (CPU_ISSET(i, &prev)) mask |= 1ul << i;
+    cpu_set_t old;
+    CPU_ZERO(&old);
+    if (pthread_getaffinity_np(pthread_self(), sizeof old, &old) != 0) return prev;
+    prev.mask.assign(CPU_SETSIZE / 64, 0);
+    for (int i = 0; i < CPU_SETSIZE; ++i)
+        if (CPU_ISSET(i, &old)) prev.mask[(size_t) i / 64] |= 1ull << (i % 64);
     pin_this_thread(core);
-    return (long long) mask;
 #endif
+    prev.valid = true;
+    return prev;
 }
 
-void restore_thread_affinity(long long previous) {
-    if (previous <= 0) return;
+void restore_thread_affinity(const ThreadAffinity& previous) {
+    if (!previous.valid || previous.mask.empty()) return;
 #if defined(_WIN32)
-    SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR) previous);
+    GROUP_AFFINITY g{};
+    g.Group = previous.group;
+    g.Mask = (KAFFINITY) previous.mask[0];
+    SetThreadGroupAffinity(GetCurrentThread(), &g, nullptr);
 #else
     cpu_set_t set;
     CPU_ZERO(&set);
-    for (int i = 0; i < 64; ++i)
-        if ((previous >> i) & 1) CPU_SET(i, &set);
+    for (size_t w = 0; w < previous.mask.size(); ++w)
+        for (int b = 0; b < 64; ++b)
+            if ((previous.mask[w] >> b) & 1) CPU_SET((int) (w * 64 + (size_t) b), &set);
     pthread_setaffinity_np(pthread_self(), sizeof set, &set);
 #endif
 }
@@ -260,7 +279,8 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, std::vector<int
 void ExpertPool::pin_worker(int i, int core) {
     if (i < 0 || i >= (int) threads_.size() || core < 0) return;
 #if defined(_WIN32)
-    SetThreadAffinityMask((HANDLE) threads_[(size_t) i].native_handle(), (DWORD_PTR) 1 << (core & 63));
+    const GROUP_AFFINITY g = group_affinity(core);
+    SetThreadGroupAffinity((HANDLE) threads_[(size_t) i].native_handle(), &g, nullptr);
 #else
     cpu_set_t set;
     CPU_ZERO(&set);

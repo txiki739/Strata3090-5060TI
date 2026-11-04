@@ -75,7 +75,7 @@ public:
 private:
     std::vector<int> cpus_;
     int n_ = 1;
-    long long prev_ = -1;
+    lamina::kernels::cpu::ThreadAffinity prev_;
     std::vector<std::thread> th_;
     const std::function<void(int)>* task_ = nullptr;
     std::atomic<uint64_t> go_{0};

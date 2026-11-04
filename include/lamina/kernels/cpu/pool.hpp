@@ -111,21 +111,29 @@ private:
 /// - exactly 5/6 of L9's 44.14 on 6 - and at **26.9 GB/s inside the host loop**, where the unpinned spinning
 /// host is free to land on a worker's core or its SMT sibling.  That 1.35x is not the kernel.
 ///
-/// Returns the PREVIOUS affinity mask, or -1 if the platform refused; pass it to `restore_thread_affinity`.
-long long pin_current_thread(int core);
-void restore_thread_affinity(long long previous);
+/// A thread's affinity as it was: Windows its processor group and that group's mask, elsewhere every processor's
+/// bit (64 a word); `valid` false when it could not be read or changed.
+struct ThreadAffinity {
+    bool valid = false;
+    uint16_t group = 0;
+    std::vector<uint64_t> mask;
+};
+/// Pins the calling thread to `core` (a processor as physical_cores numbers them: Windows Group * 64 + bit) and
+/// returns the PREVIOUS affinity; pass it to `restore_thread_affinity`.
+ThreadAffinity pin_current_thread(int core);
+void restore_thread_affinity(const ThreadAffinity& previous);
 
 /// The host loop's thread on `core` (CorePlacement::host()) for this object's life, its mask restored at the end;
 /// made and destroyed on the thread that runs the loop.
 class HostPin {
 public:
-    explicit HostPin(int core) : prev_(core >= 0 ? pin_current_thread(core) : -1) {}
+    explicit HostPin(int core) : prev_(core >= 0 ? pin_current_thread(core) : ThreadAffinity{}) {}
     ~HostPin() { restore_thread_affinity(prev_); }
     HostPin(const HostPin&) = delete;
     HostPin& operator=(const HostPin&) = delete;
 
 private:
-    long long prev_;
+    ThreadAffinity prev_;
 };
 
 #ifdef _MSC_VER
