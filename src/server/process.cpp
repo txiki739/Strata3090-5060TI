@@ -599,8 +599,11 @@ Process::Process(SpawnOptions o) : impl_(std::make_unique<Impl>()) {
                 *fd = -1;
             }
     };
-    if ((o.in == SpawnOptions::pipe && ::pipe(in_pipe) != 0) || (o.out == SpawnOptions::pipe && ::pipe(out_pipe) != 0) ||
-        (o.err == SpawnOptions::pipe && ::pipe(err_pipe) != 0) || ::pipe2(status, O_CLOEXEC) != 0) {
+    // close-on-exec from the start: a child another thread starts meanwhile would otherwise hold these ends (a
+    // replica's stdout write end kept open by an MCP server: no EOF when the replica dies); dup2 clears it for 0-2
+    if ((o.in == SpawnOptions::pipe && ::pipe2(in_pipe, O_CLOEXEC) != 0) ||
+        (o.out == SpawnOptions::pipe && ::pipe2(out_pipe, O_CLOEXEC) != 0) ||
+        (o.err == SpawnOptions::pipe && ::pipe2(err_pipe, O_CLOEXEC) != 0) || ::pipe2(status, O_CLOEXEC) != 0) {
         const int e = errno;
         closeall({&in_pipe[0], &in_pipe[1], &out_pipe[0], &out_pipe[1], &err_pipe[0], &err_pipe[1], &status[0], &status[1]});
         throw std::runtime_error(os_error(e));
@@ -654,6 +657,7 @@ Process::Process(SpawnOptions o) : impl_(std::make_unique<Impl>()) {
         }
         auto fd_to = [](int fd, int target) {
             if (fd >= 0 && fd != target) ::dup2(fd, target);
+            else if (fd == target) ::fcntl(fd, F_SETFD, 0);   // already there: only its close-on-exec cleared
         };
         auto null_to = [](int target, int flags) {
             const int fd = ::open("/dev/null", flags);
@@ -705,8 +709,6 @@ Process::Process(SpawnOptions o) : impl_(std::make_unique<Impl>()) {
     p.in = in_pipe[1];
     p.out = out_pipe[0];
     p.err = err_pipe[0];
-    for (int fd : {p.in, p.out, p.err})
-        if (fd >= 0) ::fcntl(fd, F_SETFD, FD_CLOEXEC);
     p.cr_lines = o.cr_lines;
     if (p.out >= 0) p.out_reader = std::thread([&p] { p.read_out(); });
     else p.lines->close();
