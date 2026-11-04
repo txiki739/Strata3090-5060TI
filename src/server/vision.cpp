@@ -472,12 +472,21 @@ std::string Vision::load(const std::string& source) {
     }
     if (starts_with(source, "http://") || starts_with(source, "https://")) return download(source);
     const bool file_url = starts_with(source, "file://");
-    const std::string path = file_url ? source.substr(7) : source;
+    std::string path = file_url ? source.substr(7) : source;
     // refused before anything looks at the path: file://host/share/x.png is \\host\share\x.png ("file://C:/x.png", a
     // drive, is a client's spelling of file:///C:/x.png)
     std::string host;
     if (file_url) host = path.substr(0, path.find_first_of("/\\"));
     const bool drive = host.size() == 2 && std::isalpha((unsigned char) host[0]) && host[1] == ':';
+    if (file_url) {   // the path as urllib.request.url2pathname reads it: no localhost, %XX decoded, /C:/ a drive's
+        if (lower(host) == "localhost") path.erase(0, host.size());
+        path = unquote_to_bytes(path);
+#ifdef _WIN32
+        if (path.size() >= 3 && (path[0] == '/' || path[0] == '\\') && std::isalpha((unsigned char) path[1]) && path[2] == ':')
+            path.erase(0, 1);
+#endif
+    }
+    // checked on the decoded path: file:///%2F%2Fhost/share/x.png is //host/share/x.png too
     if (network_path(path) || (!host.empty() && !drive && lower(host) != "localhost"))
         throw std::invalid_argument("an image file must be on this computer: network paths (\\\\host\\share, "
                                     "//host/share, file://host/...) are not read");

@@ -3103,17 +3103,7 @@ std::pair<std::string, std::string> urldefrag(const std::string& url) {
 /// urllib.parse.unquote: %XX as bytes, decoded as UTF-8 (an invalid byte as U+FFFD)
 std::string unquote(const std::string& s) {
     if (s.find('%') == npos) return s;
-    std::string bytes;
-    for (size_t k = 0; k < s.size(); ++k) {
-        if (s[k] == '%' && k + 2 < s.size() + 0 && hex_value((unsigned char) s[k + 1]) >= 0 &&
-            hex_value((unsigned char) s[k + 2]) >= 0) {
-            bytes += (char) (hex_value((unsigned char) s[k + 1]) * 16 + hex_value((unsigned char) s[k + 2]));
-            k += 2;
-        } else {
-            bytes += s[k];
-        }
-    }
-    return sanitized(bytes);
+    return sanitized(unquote_to_bytes(s));
 }
 
 }  // namespace url

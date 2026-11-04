@@ -68,6 +68,8 @@ std::vector<std::string> split_ws(std::string_view s);   ///< str.split(): the f
 /// str.splitlines(): \n, \r, \r\n, \v, \f, \x1c-\x1e, \x85, U+2028 and U+2029 end a line
 std::vector<std::string_view> splitlines(std::string_view s);
 std::string lower(std::string_view s);         ///< ASCII lower case (str.lower on the inputs that reach it)
+/// urllib.parse.unquote_to_bytes: each %XX as its byte, the rest (a % without two hex digits too) as it is
+std::string unquote_to_bytes(std::string_view s);
 size_t utf8_len(std::string_view s);           ///< len() of the decoded text
 /// the code point at s[i] and its length (an invalid byte reads as itself, length 1)
 uint32_t utf8_at(std::string_view s, size_t i, size_t* n);
