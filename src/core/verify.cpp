@@ -922,7 +922,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
             int32_t* pl = plan_ + (size_t) grp * (size_t) plan_stride_;
             copy_i32_from_mapped(pl, m_plan_ + (size_t) grp * (size_t) plan_i32_, plan_i32_, cs);
             pcie = plan_at(pl);
-            wait_flag_ge(m_flagB_, ring, cs);                  // it is in staging (DMA) or mapped
+            wait_flag_ge(m_flagB_ + grp, ring, cs);            // it is in staging (DMA) or mapped
             if (sink_.pcie_mode == 2) {                        // stage it with a copy kernel, then point at staging
                 const int64_t per = G == 2 ? kStagingBlobs / 2 : kStagingBlobs;
                 uint8_t* stage = staging_ + (size_t) (grp * per) * lay.max_blob;
@@ -1159,7 +1159,7 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
     *(volatile uint32_t*) h_seq_ = 0;
     *(volatile uint32_t*) h_flag_ = 0;
     *(volatile uint32_t*) h_flagA_ = 0;
-    *(volatile uint32_t*) h_flagB_ = 0;
+    for (int grp = 0; grp < 2; ++grp) *(volatile uint32_t*) (h_flagB_ + grp) = 0;
     *(volatile uint32_t*) h_pseq_ = 0;
     *(volatile uint32_t*) h_pleflag_ = 0;
     for (int grp = 0; grp < 2; ++grp)
@@ -1183,7 +1183,7 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
         for (int grp = 0; grp < 2; ++grp)
             for (int i = 0; i < 4; ++i) h_list2_[grp * list2_stride_ + i] = 0;
         std::atomic_thread_fence(std::memory_order_seq_cst);
-        for (uint32_t* f : {h_flag_, h_flagA_, h_flagB_, h_pleflag_}) *(volatile uint32_t*) f = 0xffffffffu;
+        for (uint32_t* f : {h_flag_, h_flagA_, h_flagB_, h_flagB_ + 1, h_pleflag_}) *(volatile uint32_t*) f = 0xffffffffu;
         for (int grp = 0; grp < 2; ++grp)
             for (int t = 0; t < kMaxGpuTiers; ++t) *(volatile uint32_t*) tier_flag(grp, t) = 0xffffffffu;
         cudaStreamSynchronize(cs_);
@@ -1257,6 +1257,7 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
         const Clock::time_point b = Clock::now();
         VDBG("layer %lld rang\n", (long long) l);
         cur_layer_ = want - 1;
+        cur_group_ = grp;
         set_plan_slot(grp);
         const int tb = gtb[grp], n = gte[grp] - gtb[grp];
         sink_.x1 = h_xq1_ + (size_t) tb * (size_t) (g.n_embd / 32) * 36;
@@ -1275,7 +1276,7 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
             sink_.start2[0] = 0;
             std::atomic_thread_fence(std::memory_order_seq_cst);
             *(volatile uint32_t*) h_flagA_ = want;
-            raise_flag(h_flagB_, want);
+            raise_flag(h_flagB_ + grp, want);
         }
         bool unsent = false;   // a tier's share did not go out (the pool failed): empty ones, each flag raised
         for (int t = 0; t < n_tiers_; ++t) unsent = unsent || sink_.tier_ring[t] != want;
@@ -1522,11 +1523,11 @@ void Verifier::raise_flag(uint32_t* flag, uint32_t value) {
 void Verifier::fetch_dma(void* ctx, const uint8_t* const* src, int n, size_t bytes) {
     Verifier* v = (Verifier*) ctx;
     const uint32_t want = v->cur_layer_ + 1;
-    if (n <= 0) { raise_flag(v->h_flagB_, want); return; }
+    if (n <= 0) { raise_flag(v->h_flagB_ + v->cur_group_, want); return; }
     uint8_t* stage = (uint8_t*) v->sink_.staging;                  // this group's half in a split window
     for (int i = 0; i < n; ++i) cudaMemcpyAsync(stage + (size_t) i * bytes, src[i], bytes, cudaMemcpyHostToDevice, v->copy_);
     FlagSet& fs = v->flag_sets_[v->cur_layer_ % (sizeof v->flag_sets_ / sizeof v->flag_sets_[0])];
-    fs.flag = v->h_flagB_;
+    fs.flag = v->h_flagB_ + v->cur_group_;
     fs.value = want;
     cudaLaunchHostFunc(v->copy_, [](void* p) { FlagSet* s = (FlagSet*) p; raise_flag(s->flag, s->value); }, &fs);
 }

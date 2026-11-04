@@ -240,7 +240,9 @@ private:
     uint32_t* h_seq_ = nullptr;  uint32_t* m_seq_ = nullptr;
     uint32_t* h_flag_ = nullptr; uint32_t* m_flag_ = nullptr;
     uint32_t* h_flagA_ = nullptr; uint32_t* m_flagA_ = nullptr;  // the PCIe share's plan is in place
-    uint32_t* h_flagB_ = nullptr; uint32_t* m_flagB_ = nullptr;  // the PCIe share's DMA copies have landed
+    // the PCIe share's DMA copies have landed: one flag a token group (a split window's two are raised apart, the
+    // second's empty share before the first's copies land)
+    uint32_t* h_flagB_ = nullptr; uint32_t* m_flagB_ = nullptr;
     uint32_t* h_pleflag_ = nullptr; uint32_t* m_pleflag_ = nullptr;  // the PLE rows are in h_ple_
     bool host_rows_ = false;
     float* h_rows_ = nullptr;    float* m_rows_ = nullptr;      // T * hc * n_embd: the final rows (set_host_rows)
@@ -257,6 +259,7 @@ private:
     int64_t res_words_ = 0;
     GpuPlanSink sink_;
     uint32_t cur_layer_ = 0;
+    int cur_group_ = 0;   // cur_layer_'s token group (h_flagB_'s index)
     static void publish_plan(void* ctx);
     void set_plan_slot(int grp);
     bool split_ = false;   // opt-in (--spec-split): exact but slower, see the overlap study
