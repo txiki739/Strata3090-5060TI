@@ -1,14 +1,19 @@
 // src/ngram/ple_reader_test.cpp - plan v0.3 P2: the direct SSD row reader against ground truth.
 //
 //   ple_reader_test --selftest [--dir D]        synthetic table file; CPU and disk only, no model, no GPU
-//   ple_reader_test --gguf SHARD2 [--rows N]    the real table: Direct vs Mmap bytes for N random rows (+ the
-//                                               16 rows of every token in --tokens FILE), with read latencies
+//   ple_reader_test --gguf TABLE [--rows N]     the real table (the GGUF that holds it): Direct vs Mmap for N
+//                                               random rows (+ the 16 rows of every token in --tokens FILE),
+//                                               with read latencies
 //
 // Every row the synthetic table holds encodes its own index, so a wrong offset, a straddle mishandled or a
 // dedup slot mixed up shows as a mismatch rather than as plausible data.
 #include "lamina/kernels/ngram.hpp"
 #include "lamina/ngram/ple_reader.hpp"
 #include "lamina/platform/direct_file.hpp"
+
+#if defined(LAMINA_NATIVE_EXPERTS)
+#include "ggml.h"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -76,17 +81,48 @@ bool check_rows(ng::PleReader& rd, const std::vector<uint32_t>& rows, uint32_t n
     return true;
 }
 
-/// BOTH FORMATS OF THE TABLE, END TO END: IQ4_NL and Q8_0 (the unsloth files), the types `PleTable::open` takes. A
-/// minimal PLE-only GGUF holds `rows` rows of that format's row size, each filled with bytes that encode the row, and
-/// every I/O mode must return exactly what `ple_dequant_row` makes of those bytes - so the row width, the offset and
-/// the type have to be right for both formats, not only for IQ4_NL.
+/// EVERY FORMAT OF THE TABLE, END TO END: IQ4_NL and Q8_0 (the model files), Q5_1 and BF16 (unsloth's engram tables),
+/// the types `PleTable::open` takes. A minimal PLE-only GGUF holds `rows` rows of that format's row size, each filled
+/// with bytes that encode the row, and every I/O mode must return exactly what `ple_dequant_row` makes of those bytes -
+/// so the row width, the offset and the type have to be right for every format, not only for IQ4_NL.
 struct Format {
     const char* name;
     uint32_t gguf_type;
     uint32_t row_bytes;
 };
-constexpr Format kFormats[] = {{"IQ4_NL", 20, k::PLE_ROW_BYTES}, {"Q8_0", 8, k::PLE_ROW_BYTES_Q8_0}};
+constexpr Format kFormats[] = {{"IQ4_NL", 20, k::PLE_ROW_BYTES_IQ4_NL}, {"Q5_1", 7, k::PLE_ROW_BYTES_Q5_1},
+                               {"Q8_0", 8, k::PLE_ROW_BYTES_Q8_0}, {"BF16", 30, k::PLE_ROW_BYTES_BF16}};
 constexpr Format kQ5_0 = {"Q5_0", 6, 110};   // a table type other GGUFs have, which `open` refuses
+
+/// `ple_dequant_row` against ggml's own `to_float` (llama.cpp's reading of the table), every format, bit for bit, on
+/// rows of random bytes with finite values (a NaN's payload is no part of the contract).
+void rows_match_ggml() {
+#if defined(LAMINA_NATIVE_EXPERTS)
+    std::mt19937 rng(5);
+    for (const Format& f : kFormats) {
+        const ggml_to_float_t to_float = ggml_get_type_traits((ggml_type) f.gguf_type)->to_float;
+        std::vector<uint8_t> row(f.row_bytes);
+        float got[k::PLE_HEAD_DIM], want[k::PLE_HEAD_DIM];
+        for (int i = 0; i < 2000; ++i) {
+            for (auto& b : row) b = (uint8_t) rng();
+            // the exponents below all ones: every BF16 value, or each block's fp16 scale (and Q5_1's min after it)
+            if (f.gguf_type == 30)
+                for (uint32_t at = 1; at < f.row_bytes; at += 2) row[at] &= 0xBF;
+            else
+                for (uint32_t at = 0; at < f.row_bytes; at += f.row_bytes / 5) {
+                    row[at + 1] &= 0xBF;
+                    if (f.gguf_type == 7) row[at + 3] &= 0xBF;
+                }
+            to_float(row.data(), want, k::PLE_HEAD_DIM);
+            k::ple_dequant_row((int) f.gguf_type, row.data(), got);
+            if (std::memcmp(got, want, sizeof got) != 0) {
+                CHECK(false, "%s: row %d decodes otherwise than ggml's to_float", f.name, i);
+                break;
+            }
+        }
+    }
+#endif
+}
 
 constexpr k::PleIo kModes[] = {k::PleIo::Direct, k::PleIo::Mmap, k::PleIo::Ram};
 const char* mode_name(k::PleIo m) { return m == k::PleIo::Direct ? "direct" : m == k::PleIo::Mmap ? "mmap" : "ram"; }
@@ -225,10 +261,9 @@ void bad_tables_are_refused(const std::string& dir) {
 /// The read-ahead slots (`ahead`, the verify window's tokens): in every I/O mode a slot gives the bytes the mapped
 /// reader gives for its rows and holds exactly those rows until they are collected, a slot still holding rows takes
 /// others, the slots work beside a token in `issue` and are collected in any order, and each row is asked for once.
-void ahead_slots_hold_their_rows(const std::string& dir) {
-    const Format& f = kFormats[0];
+void ahead_slots_hold_their_rows(const std::string& dir, const Format& f) {
     const std::string path = write_format_table(dir, f, 4096);
-    if (path.empty()) { CHECK(false, "cannot write the read-ahead table"); return; }
+    if (path.empty()) { CHECK(false, "%s: cannot write the read-ahead table", f.name); return; }
     constexpr int S = k::PleTable::kAheadSlots, kTokens = 32, kReplaced = 20, kIssued = 30;
     const auto keys = [](int id) {                  // token `id`'s 16 rows
         std::vector<uint32_t> r;
@@ -247,7 +282,7 @@ void ahead_slots_hold_their_rows(const std::string& dir) {
         k::PleIoOptions mio;
         mio.mode = k::PleIo::Mmap;
         std::string err;
-        if (!mapped.open(path, err, mio)) { CHECK(false, "mapped open: %s", err.c_str()); return; }
+        if (!mapped.open(path, err, mio)) { CHECK(false, "%s: mapped open: %s", f.name, err.c_str()); return; }
         for (int id = 0; id < kTokens; ++id) mapped.gather(keys(id).data(), ref.data() + id * tok);
     }
     struct Arm { const char* name; k::PleIo mode; uint64_t cache; bool worker; };
@@ -257,6 +292,7 @@ void ahead_slots_hold_their_rows(const std::string& dir) {
     const float sentinel = -12345.5f;
     std::vector<float> out(tok + 2);
     for (const Arm& a : arms) {
+        const std::string label = std::string(f.name) + ", " + a.name;
         k::PleTable t;
         k::PleIoOptions io;
         io.mode = a.mode;
@@ -264,51 +300,57 @@ void ahead_slots_hold_their_rows(const std::string& dir) {
         io.io_thread = a.worker;
         io.max_inflight = 8;
         std::string err;
-        if (!open_table(t, path, io, err)) { CHECK(false, "%s: open: %s", a.name, err.c_str()); continue; }
+        if (!open_table(t, path, io, err)) { CHECK(false, "%s: open: %s", label.c_str(), err.c_str()); continue; }
         const uint64_t rq = requests(t);
         for (int s = 0; s < S; ++s) t.ahead(s, keys(s).data());
         for (int s = 0; s < S; ++s)
-            CHECK(t.ahead_holds(s, keys(s).data()) && !t.ahead_holds(s, keys(s + 1).data()), "%s: slot %d holds other rows", a.name, s);
+            CHECK(t.ahead_holds(s, keys(s).data()) && !t.ahead_holds(s, keys(s + 1).data()), "%s: slot %d holds other rows", label.c_str(), s);
         t.ahead(3, keys(kReplaced).data());          // a slot still holding rows takes others
-        CHECK(t.ahead_holds(3, keys(kReplaced).data()) && !t.ahead_holds(3, keys(3).data()), "%s: slot 3 kept its earlier rows", a.name);
-        CHECK(t.issue(keys(kIssued).data()), "%s: issue beside the slots", a.name);
+        CHECK(t.ahead_holds(3, keys(kReplaced).data()) && !t.ahead_holds(3, keys(3).data()), "%s: slot 3 kept its earlier rows", label.c_str());
+        CHECK(t.issue(keys(kIssued).data()), "%s: issue beside the slots", label.c_str());
         std::fill(out.begin(), out.end(), sentinel);
-        CHECK(t.collect(out.data() + 1, err), "%s: collect: %s", a.name, err.c_str());
-        CHECK(std::memcmp(out.data() + 1, ref.data() + kIssued * tok, tok * sizeof(float)) == 0, "%s: the issued token differs", a.name);
+        CHECK(t.collect(out.data() + 1, err), "%s: collect: %s", label.c_str(), err.c_str());
+        CHECK(std::memcmp(out.data() + 1, ref.data() + kIssued * tok, tok * sizeof(float)) == 0, "%s: the issued token differs", label.c_str());
         for (int s = S - 1; s >= 0; --s) {           // collected in reverse order
             const int id = s == 3 ? kReplaced : s;
             std::fill(out.begin(), out.end(), sentinel);
-            CHECK(t.ahead_collect(s, out.data() + 1, err), "%s: slot %d: %s", a.name, s, err.c_str());
+            CHECK(t.ahead_collect(s, out.data() + 1, err), "%s: slot %d: %s", label.c_str(), s, err.c_str());
             CHECK(std::memcmp(out.data() + 1, ref.data() + id * tok, tok * sizeof(float)) == 0,
-                  "%s: slot %d differs from the mapped reader", a.name, s);
-            CHECK(out.front() == sentinel && out.back() == sentinel, "%s: slot %d wrote outside the output", a.name, s);
-            CHECK(!t.ahead_holds(s, keys(id).data()), "%s: slot %d still holds its rows after the collect", a.name, s);
+                  "%s: slot %d differs from the mapped reader", label.c_str(), s);
+            CHECK(out.front() == sentinel && out.back() == sentinel, "%s: slot %d wrote outside the output", label.c_str(), s);
+            CHECK(!t.ahead_holds(s, keys(id).data()), "%s: slot %d still holds its rows after the collect", label.c_str(), s);
         }
         err.clear();
-        CHECK(!t.ahead_collect(0, out.data(), err) && !err.empty(), "%s: an empty slot was collected", a.name);
+        CHECK(!t.ahead_collect(0, out.data(), err) && !err.empty(), "%s: an empty slot was collected", label.c_str());
         t.ahead(-1, keys(0).data());                 // slots out of range are ignored
         t.ahead(S, keys(0).data());
-        CHECK(!t.ahead_holds(S, keys(0).data()) && !t.ahead_collect(S, out.data(), err), "%s: slot %d was used", a.name, S);
+        CHECK(!t.ahead_holds(S, keys(0).data()) && !t.ahead_collect(S, out.data(), err), "%s: slot %d was used", label.c_str(), S);
         if (a.mode == k::PleIo::Direct)              // S slots, the replaced one's new rows and the issued token
-            CHECK(requests(t) - rq == (uint64_t) (S + 2) * k::PLE_N_HEADS, "%s: %llu rows asked for, want %d", a.name,
+            CHECK(requests(t) - rq == (uint64_t) (S + 2) * k::PLE_N_HEADS, "%s: %llu rows asked for, want %d", label.c_str(),
                   (unsigned long long) (requests(t) - rq), (S + 2) * k::PLE_N_HEADS);
     }
     std::filesystem::remove(path);
 }
 
 void all_formats_round_trip(const std::string& dir) {
+    rows_match_ggml();
     bad_tables_are_refused(dir);
-    ahead_slots_hold_their_rows(dir);
-    for (const Format& f : kFormats) format_round_trip(dir, f, 2000);
+    for (const Format& f : kFormats) {
+        ahead_slots_hold_their_rows(dir, f);
+        format_round_trip(dir, f, 2000);
+    }
     if (g_fail == 0) {
         std::printf("ple formats");
         for (const Format& f : kFormats) std::printf(" %s", f.name);
-        std::printf(" (direct, mmap, ram) vs ple_dequant_row, bad tables refused, read-ahead slots: OK\n");
+        std::printf(" (direct, mmap, ram) vs ple_dequant_row, ");
+#if defined(LAMINA_NATIVE_EXPERTS)
+        std::printf("ple_dequant_row vs ggml's to_float, ");
+#endif
+        std::printf("bad tables refused, read-ahead slots: OK\n");
     }
 }
 
-// row_bytes: ng::ROW_BYTES (90, IQ4_NL) and k::PLE_ROW_BYTES_Q8_0 (170), the table's two row sizes, through the
-// reader's one generic row_bytes path.
+// row_bytes: each format's (90 IQ4_NL, 120 Q5_1, 170 Q8_0, 320 BF16), through the reader's one generic row_bytes path.
 int selftest(const std::string& dir, uint32_t rb) {
     const uint32_t N = 500000;                          // 45-85 MB: large enough for thousands of distinct pages
     const std::string path = dir + "/ple_reader_selftest_" + std::to_string(rb) + ".bin";
@@ -539,14 +581,14 @@ int main(int argc, char** argv) {
         else if (a == "--direct-first") direct_first = true;
         else if (a == "--direct-only") direct_only = true;
         else if (a == "--sync") sync_submit = true;
-        else { std::fprintf(stderr, "usage: ple_reader_test --selftest [--dir D] | --gguf SHARD2 [--rows N] [--tokens F]\n"); return 2; }
+        else { std::fprintf(stderr, "usage: ple_reader_test --selftest [--dir D] | --gguf TABLE [--rows N] [--tokens F]\n"); return 2; }
     }
     if (self) {
-        all_formats_round_trip(dir);               // both formats, every I/O mode, vs ple_dequant_row
+        all_formats_round_trip(dir);               // every format, every I/O mode, vs ple_dequant_row
         if (g_fail != 0) return 1;
-        const int r90 = selftest(dir, ng::ROW_BYTES);
-        const int r170 = selftest(dir, k::PLE_ROW_BYTES_Q8_0);
-        return r90 != 0 ? r90 : r170;
+        for (const Format& f : kFormats)
+            if (const int r = selftest(dir, f.row_bytes); r != 0) return r;
+        return 0;
     }
     if (!gguf.empty()) return real(gguf, rows, tokens, inflight, direct_first, direct_only, sync_submit);
     std::fprintf(stderr, "nothing to do\n");

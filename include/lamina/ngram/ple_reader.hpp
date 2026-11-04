@@ -1,8 +1,9 @@
 // include/lamina/ngram/ple_reader.hpp - plan v0.3 P2: the n-gram table read straight from the SSD.
 //
-// The table is 320,001,536 rows of 90 bytes (IQ4_NL, 26.8 GiB) or 160 (FP8 E4M3, 51.2 GB) and is never held in RAM: every row comes from an
-// unbuffered 4 KiB read (platform::DirectFile). A token needs 16 rows on 16 different pages, and all 16 depend
-// on the token itself, so the only time to hide them is the embedding plus layer 0. Hence the split API:
+// The table is 320,001,536 rows of 90 bytes (IQ4_NL, 26.8 GiB), 120 (Q5_1), 170 (Q8_0) or 320 (BF16) and is never
+// held in RAM: every row comes from an unbuffered 4 KiB read (platform::DirectFile). A token needs 16 rows on 16
+// different pages, and all 16 depend on the token itself, so the only time to hide them is the embedding plus layer 0.
+// Hence the split API:
 //
 //     Ticket t = reader.issue(rows, n, out_raw);    // as soon as the token id is known
 //     ...                                           // embedding, layer 0
@@ -11,9 +12,9 @@
 // `issue` also serves prefill: pass all 16 x N rows of a chunk; pages are deduplicated, sorted by offset and
 // kept at most `max_inflight` deep, so a chunk's reads can run while the previous chunk computes.
 //
-// THE ROW CACHE IS NOT THE TABLE. It keeps rows this process has already fetched (90 bytes each, bounded,
-// clock eviction). Measured on the frozen corpus (upstream Strata's bench/results/2026-09-23-ngram-io): 1M rows (~95 MB)
-// would serve up to ~82% of reads; within one long prompt 20-34% of rows recur. Capacity 0 disables it.
+// THE ROW CACHE IS NOT THE TABLE. It keeps rows this process has already fetched (bounded, clock eviction). Measured
+// on the frozen corpus (upstream Strata's bench/results/2026-09-23-ngram-io): 1M rows (~95 MB of IQ4_NL) would serve
+// up to ~82% of reads; within one long prompt 20-34% of rows recur. Capacity 0 disables it.
 #pragma once
 
 #include "lamina/platform/direct_file.hpp"
@@ -58,7 +59,7 @@ public:
     /// validated GGUF parse (PleTable::open checks the table exactly fills the file from there).
     /// `io_thread` (default): a worker thread submits and reaps reads, so `issue` costs the caller no ReadFile
     /// calls. false: the caller's thread does it (A/B arm).
-    /// `row_bytes`: one row's size in the file (90 IQ4_NL, 160 FP8), at most one page.
+    /// `row_bytes`: one row's size in the file (kernels::ple_row_bytes), at most one page.
     bool open(const std::string& path, uint64_t table_offset, uint64_t n_rows, uint32_t max_inflight,
               uint64_t cache_rows, std::string& err, bool io_thread = true, uint32_t row_bytes = ROW_BYTES);
     uint32_t row_bytes() const;

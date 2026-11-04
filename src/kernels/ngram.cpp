@@ -1,9 +1,9 @@
-// src/kernels/ngram.cpp - P2.S4: the PLE n-gram hash and the table read (IQ4_NL or Q8_0).
+// src/kernels/ngram.cpp - P2.S4: the PLE n-gram hash and the table read (IQ4_NL, Q5_1, Q8_0 or BF16).
 //
 // See include/lamina/kernels/ngram.hpp for the semantics, the rival readings, and the note on MADV_RANDOM.
 #include "lamina/kernels/ngram.hpp"
+#include "lamina/artifact/dequant.hpp"
 #include "lamina/artifact/gguf_reader.hpp"
-#include "lamina/kernels/f16_bits.hpp"
 #include "lamina/ngram/ple_reader.hpp"
 #include "lamina/platform/direct_file.hpp"
 
@@ -86,37 +86,18 @@ void ngram_rows(const int32_t* tokens, const int32_t* prev, int n_tokens, const 
     }
 }
 
-namespace {
-const int8_t kIq4Nl[16] = {-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113};
-}
-
-
-void iq4nl_dequant_row(const uint8_t* row, float* out160) {
-    for (int b = 0; b < PLE_HEAD_DIM / 32; ++b) {
-        const uint8_t* blk = row + (size_t) b * 18;
-        uint16_t dbits;
-        std::memcpy(&dbits, blk, 2);
-        const float d = f32_from_f16(dbits);
-        const uint8_t* qs = blk + 2;
-        // SPLIT HALVES: qs[j] holds elements j and j+16, not 2j and 2j+1.
-        for (int j = 0; j < 16; ++j) {
-            out160[b * 32 + j] = d * (float) kIq4Nl[qs[j] & 0x0F];
-            out160[b * 32 + j + 16] = d * (float) kIq4Nl[qs[j] >> 4];
-        }
-    }
-}
-
 void ple_dequant_row(int type, const uint8_t* row, float* out160) {
-    if (type != 8) {
-        iq4nl_dequant_row(row, out160);
+    if (type == 30) {
+        for (int j = 0; j < PLE_HEAD_DIM; ++j) out160[j] = lamina::bf16_to_fp32(lamina::read_u16(row + 2 * j));
         return;
     }
-    for (int b = 0; b < PLE_HEAD_DIM / 32; ++b) {                     // Q8_0: fp16 scale + 32 int8
-        const uint8_t* blk = row + (size_t) b * 34;
-        uint16_t dbits;
-        std::memcpy(&dbits, blk, 2);
-        const float d = f32_from_f16(dbits);
-        for (int j = 0; j < 32; ++j) out160[b * 32 + j] = d * (float) (int8_t) blk[2 + j];
+    const int bb = ple_row_bytes(type) / (PLE_HEAD_DIM / 32);   // a block's bytes; the five blocks of 32 in order
+    for (int b = 0; b < PLE_HEAD_DIM / 32; ++b) {
+        const uint8_t* blk = row + (size_t) b * bb;
+        float* out = out160 + b * 32;
+        if (type == 20) lamina::dequantize_iq4_nl(blk, out);
+        else if (type == 7) lamina::dequantize_q5_1(blk, out);
+        else lamina::dequantize_q8_0(blk, out);
     }
 }
 
@@ -135,8 +116,8 @@ struct PleTable::Impl {
     GgufFile* file = nullptr;
     const uint8_t* data = nullptr;
     uint64_t n_rows = 0;
-    int type = 20;                        // IQ4_NL or Q8_0
-    uint32_t row_bytes = PLE_ROW_BYTES;
+    int type = 20;                        // a type ple_row_bytes takes
+    uint32_t row_bytes = PLE_ROW_BYTES_IQ4_NL;
     mutable uint64_t bytes_read = 0;
     // Direct mode (plan v0.3 P2): the mapping above is released after the header parse and every row comes
     // from an unbuffered SSD read into `raw`.
@@ -145,7 +126,7 @@ struct PleTable::Impl {
     lamina::ngram::PleReader::Ticket ticket;
     bool pending = false;
     uint32_t rows[PLE_N_HEADS] = {};
-    uint8_t raw[PLE_N_HEADS * PLE_ROW_BYTES_Q8_0] = {};
+    uint8_t raw[PLE_N_HEADS * PLE_ROW_BYTES_MAX] = {};
     // Ram mode: the table read into `ram_base` by `loader`; `ram` (the table's first row) valid once `ram_ready`
     std::string path;
     uint64_t table_offset = 0;
@@ -160,7 +141,7 @@ struct PleTable::Impl {
     struct Ahead {
         bool pending = false, via_reader = false;
         uint32_t rows[PLE_N_HEADS] = {};
-        uint8_t raw[PLE_N_HEADS * PLE_ROW_BYTES_Q8_0] = {};
+        uint8_t raw[PLE_N_HEADS * PLE_ROW_BYTES_MAX] = {};
         lamina::ngram::PleReader::Ticket ticket;
     };
     Ahead aheads[PleTable::kAheadSlots];
@@ -248,13 +229,13 @@ bool PleTable::open(const std::string& gguf_path, std::string& err, const PleIoO
         close();
         return false;
     }
-    if (t->type != 20 && t->type != 8) {
-        err = std::string("per_layer_token_embd.weight is ") + t->type_name() + ", not IQ4_NL or Q8_0";
+    if (ple_row_bytes((int) t->type) == 0) {
+        err = std::string("per_layer_token_embd.weight is ") + t->type_name() + ", not IQ4_NL, Q5_1, Q8_0 or BF16";
         close();
         return false;
     }
     impl_->type = (int) t->type;
-    impl_->row_bytes = t->type == 8 ? PLE_ROW_BYTES_Q8_0 : PLE_ROW_BYTES;
+    impl_->row_bytes = (uint32_t) ple_row_bytes((int) t->type);
     impl_->n_rows = t->shape[1];
     impl_->data = impl_->file->tensor_data(*t);
 
@@ -264,8 +245,8 @@ bool PleTable::open(const std::string& gguf_path, std::string& err, const PleIoO
     // row.  `GgufFile` parses the header, so `tensor_data` is already correct; this asserts the tensor
     // exactly fills its span - up to the next tensor or the end of the file, less the alignment padding -
     // which is what makes the whole arrangement checkable rather than assumed.  A wrong data offset would
-    // leave a different remainder.  (The table fills the ISTA shard 2 alone; the unsloth shard 2 holds other
-    // tensors too.)
+    // leave a different remainder.  (The table fills ISTA's shard 2, unsloth's table shard and its engram files
+    // alone; the shard 2 of unsloth's Dynamic 3.0 UD-Q4_K_XL holds other tensors too.)
     const uint64_t need = impl_->n_rows * (uint64_t) impl_->row_bytes;
     uint64_t end = impl_->file->file_size() - impl_->file->data_start();
     for (const auto& o : impl_->file->tensors())
@@ -358,7 +339,7 @@ void PleTable::read_row(uint32_t row, float* out160) const {
         return;
     }
     if (impl_->direct() && impl_->reader.is_open()) {
-        uint8_t raw[PLE_ROW_BYTES_Q8_0];
+        uint8_t raw[PLE_ROW_BYTES_MAX];
         std::string err;
         const auto t = impl_->reader.issue(&row, 1, raw);
         if (!impl_->reader.collect(t, err)) {
@@ -541,7 +522,7 @@ void PleTable::gather(const uint32_t* rows16, float* out2560) const {
     //
     // **THIS COST 2.10-2.61 ms PER TOKEN AND HAD NEVER BEEN IN THE PLAN'S BUDGET AT ALL.**  The round-309
     // `token host phases` line put it second behind the layer loop among avoidable terms, and the arithmetic
-    // says why: the table is 320,001,536 rows of `PLE_ROW_BYTES` = 90 B in a 26.8 GB mapping, so the sixteen
+    // says why: the table is 320,001,536 rows of `PLE_ROW_BYTES_IQ4_NL` = 90 B in a 26.8 GB mapping, so the sixteen
     // rows a token needs are 1,440 B - **0.5 MB/s**.  That is not bandwidth, it is latency: sixteen reads into
     // sixteen different 4 KB pages scattered across 26.8 GB, taken ONE AT A TIME, and on this machine the PLE
     // shard is 26.8 GB against 63 GB of RAM that the 31.6 GB expert arena is also competing for, so they are

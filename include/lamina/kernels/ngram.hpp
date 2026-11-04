@@ -6,8 +6,9 @@
 //     with 64-bit multiply/xor and no tensor op at all.  `qwen4exp.cpp` L1092-1124, where the source says
 //     outright that it is host-side because "ggml has no int64 and no xor".
 //   * `PleTable`  - the row gather.  `per_layer_token_embd.weight` is IQ4_NL (Q8_0 in the unsloth UD-Q5_K_XL and
-//     larger files) and is NOT IN THE PACK: it is 51.2e9 elements (28.8 GB; 54.4 GB as Q8_0) in the model's
-//     GGUF, and the engine reads it from there.
+//     larger files; unsloth's engram tables, swapped in for a quant's own, also Q5_1 and BF16) and is NOT IN THE
+//     PACK: it is 51.2e9 elements (28.8 GB as IQ4_NL, 38.4 Q5_1, 54.4 Q8_0, 102.4 BF16) in a GGUF, and the engine
+//     reads it from there.
 //
 // THE HASH IS THE ONE PLACE IN THIS MODEL WHERE A WRONG BIT IS SILENTLY PLAUSIBLE.  Every one of its
 // properties has a rival reading that produces a valid index in range:
@@ -42,11 +43,21 @@ inline constexpr int NG_HIST = (PLE_CONV_KERNEL - 1) * NGRAM_SIZE;       // 9
 inline constexpr int32_t TOKEN_NULL = -1;       // LLAMA_TOKEN_NULL
 inline constexpr float NG_RMS_EPS = 1e-6f;
 
-// The table: [160, 320001536] IQ4_NL.  ne0 = 160 is the FAST axis, so one row is 160 contiguous elements =
-// 5 blocks of 32 at 18 bytes = 90 bytes.  The head-slowest flatten then makes 16 rows exactly n_embd = 2560.
+// The table: [160, 320001536].  ne0 = 160 is the FAST axis, so one row is 160 contiguous elements: 5 blocks of 32
+// (IQ4_NL 18 bytes a block, Q5_1 24, Q8_0 34) or 160 BF16 values.  The head-slowest flatten then makes 16 rows
+// exactly n_embd = 2560.
 inline constexpr uint64_t PLE_TABLE_ROWS = 320001536ull;
-inline constexpr int PLE_ROW_BYTES = (PLE_HEAD_DIM / 32) * 18;           // 90
-inline constexpr int PLE_ROW_BYTES_Q8_0 = (PLE_HEAD_DIM / 32) * 34;      // 170, the Q8_0 tables
+inline constexpr int PLE_ROW_BYTES_IQ4_NL = (PLE_HEAD_DIM / 32) * 18;    // 90
+inline constexpr int PLE_ROW_BYTES_Q5_1 = (PLE_HEAD_DIM / 32) * 24;      // 120
+inline constexpr int PLE_ROW_BYTES_Q8_0 = (PLE_HEAD_DIM / 32) * 34;      // 170
+inline constexpr int PLE_ROW_BYTES_BF16 = PLE_HEAD_DIM * 2;              // 320
+inline constexpr int PLE_ROW_BYTES_MAX = PLE_ROW_BYTES_BF16;
+
+/// The bytes of one row of a table of GGML type `type`: IQ4_NL (20), Q5_1 (7), Q8_0 (8) or BF16 (30); 0 for another.
+inline constexpr int ple_row_bytes(int type) {
+    return type == 20 ? PLE_ROW_BYTES_IQ4_NL : type == 7 ? PLE_ROW_BYTES_Q5_1 : type == 8 ? PLE_ROW_BYTES_Q8_0
+         : type == 30 ? PLE_ROW_BYTES_BF16 : 0;
+}
 
 /// The artifact's own hash constants, transcribed from `docs/gguf-dump-shard1.txt`:
 ///
@@ -82,16 +93,15 @@ uint64_t ngram_mixed(const int64_t* ctx, const uint64_t* mult, int n);
 void ngram_rows(const int32_t* tokens, const int32_t* prev, int n_tokens, const PleConsts& c, uint32_t* out);
 
 
-/// One 90-byte row -> 160 floats.  The canonical rule `value = cb[code] * scale + offset` with offset 0,
-/// because IQ4_NL has no min term (`has_offset` is false in the manifest).
+/// One row of a table of GGML type `type` (one `ple_row_bytes` takes) -> 160 floats, the values ggml's `to_float`
+/// gives (`lamina/artifact/dequant.hpp`'s blocks).
 ///
-/// THE NIBBLE ORDER IS SPLIT-HALF, NOT INTERLEAVED, and that is the trap here.  `dequantize_row_iq4_nl` is
+/// THE NIBBLE ORDER IS SPLIT-HALF, NOT INTERLEAVED, and that is the trap of the 4- and 5-bit blocks.
+/// `dequantize_row_iq4_nl` is
 ///     y[j]           = d * kvalues[qs[j] & 0xf];
 ///     y[j + QK4_NL/2] = d * kvalues[qs[j] >> 4];
 /// so byte j carries elements j and j+16 - NOT 2j and 2j+1, which is the natural reading and which produces
 /// a perfectly plausible embedding of the wrong 160 values.
-void iq4nl_dequant_row(const uint8_t* row, float* out160);
-/// One row of a table of GGML type `type` (IQ4_NL = 20 or Q8_0 = 8) -> 160 floats.
 void ple_dequant_row(int type, const uint8_t* row, float* out160);
 
 /// How the table's rows are read (plan v0.3 P2). `Direct` is the default: unbuffered 4 KiB reads from the SSD,
@@ -108,7 +118,7 @@ enum class PleIo { Direct, Mmap, Ram };
 struct PleIoOptions {
     PleIo mode = PleIo::Direct;
     uint32_t max_inflight = 64;      ///< outstanding SSD reads (decode needs 16; prefill chunks use more)
-    uint64_t cache_rows = 1u << 20;  ///< bounded row cache: 1,048,576 rows x 90 B ~ 95 MB; 0 disables
+    uint64_t cache_rows = 1u << 20;  ///< bounded row cache: 1,048,576 rows (~95 MB of IQ4_NL, ~335 MB of BF16); 0 disables
     bool io_thread = true;           ///< reads submitted by a worker thread, not the caller
 };
 
@@ -155,11 +165,11 @@ public:
     /// once if no load is running.
     void wait_ram_load();
 
-    /// Maps the ORIGINAL second GGUF shard read-only.  The tensor's data does NOT start at file offset 0:
-    /// the manifest's `shard2_tensor.offset` is relative to the GGUF's DATA SECTION, and the header before it
-    /// is 192 bytes.  Reading at 0 would silently decode the header plus 192 bytes of shifted rows - still
-    /// plausible IQ4_NL, which is why the reader takes the offset from a real GGUF parse (`GgufFile`, the
-    /// project's validated reader) and checks that the tensor exactly fills the rest of the file.
+    /// Opens the GGUF that holds the table read-only.  The tensor's data does NOT start at file offset 0: its
+    /// offset is relative to the GGUF's DATA SECTION, and a table-only file's header before it is 192 bytes.
+    /// Reading at 0 would silently decode the header plus 192 bytes of shifted rows - still plausible values,
+    /// which is why the reader takes the offset from a real GGUF parse (`GgufFile`, the project's validated
+    /// reader) and checks that the tensor exactly fills its span, up to the next tensor or the end of the file.
     bool open(const std::string& gguf_path, std::string& err);
     void close();
     bool is_open() const;

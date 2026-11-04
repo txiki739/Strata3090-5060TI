@@ -456,6 +456,10 @@ if(LAMINA_NATIVE_EXPERTS)
   set_property(SOURCE src/kernels/cpu/iq_avx2.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${_lamina_avxvnni})
   target_link_libraries(lamina_kernels_cpu PUBLIC ggml-cpu ggml-base)
   target_compile_definitions(lamina_kernels_cpu PUBLIC LAMINA_NATIVE_EXPERTS=1)
+  if(TARGET ple_reader_test)   # the PLE table's rows against ggml's to_float
+    target_link_libraries(ple_reader_test PRIVATE ggml-base)
+    target_compile_definitions(ple_reader_test PRIVATE LAMINA_NATIVE_EXPERTS=1)
+  endif()
   # the AVX-2 expert kernels' variants (iq_avx2.cpp, q2_avx2.cpp; with AVX-VNNI where the CPU has it) bit for bit
   # against each other at 1..8 tokens and against ggml-cpu's dot, on random blocks; --bench: ms per expert on one
   # thread, the weights streamed from DRAM

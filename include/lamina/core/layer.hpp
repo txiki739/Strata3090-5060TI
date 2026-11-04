@@ -175,8 +175,8 @@ bool embed_rows(const WeightTable& tables, const ModelGeometry& g, const int32_t
 // ================================ THE PLE (LAYER 1'S PER-LAYER EMBEDDING) ================================
 //
 //
-// Layer 1's per-layer embedding.  Its table (`per_layer_token_embd.weight`, 28.8 GB of IQ4_NL) stays in the model
-// file and is read by row: sixteen 90-byte rows a token.
+// Layer 1's per-layer embedding.  Its table (`per_layer_token_embd.weight`, 28.8 GB of IQ4_NL in the configs' files)
+// stays in its GGUF and is read by row: sixteen rows a token (90 bytes each as IQ4_NL).
 struct PleRun {
     /// Null when the PLE is not wired (no table, or a pack without `blk.1.ple_*`).
     lamina::kernels::PleTable* table = nullptr;
