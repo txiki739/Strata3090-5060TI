@@ -16,7 +16,8 @@ The steps:
 2. lamina and lamina-vision, built with CMake, Ninja, the CUDA toolkit, and MSVC or GCC. Missing tools are named, not
    installed.
 3. The model's files from Hugging Face at pinned revisions. Downloads resume, and each file's size and SHA-256 are
-   checked.
+   checked. Where a file of an earlier upload of the same tensors is in place (unsloth's Dynamic 3.0 UD-Q4_K_XL), that
+   upload is kept and completed.
 4. Their preparation: for Flash-Next the draft layer and the Q8_0 image projector. The engine reads the rest from
    the GGUF files.
 5. lamina-<model>.json and run-<model>.bat (or .sh) beside this file, from examples/<model>.json.
@@ -53,7 +54,8 @@ CUDA_MIN = (13, 0)   # RTX 50 engines built with CUDA 12.8 crashed in long promp
 # Each file comes from a fixed commit of its Hugging Face repository, with a fixed size and SHA-256
 REPOS = {
     "ista": ("ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF", "ed59f92082b1e93c0e96d60a8b11aab089b52f09"),
-    "unsloth": ("unsloth/Qwen3.8-Flash-Next-GGUF", "38bb39ee97821de2c9009abb7e93950eec396e66"),
+    "unsloth": ("unsloth/Qwen3.8-Flash-Next-GGUF", "d96201194f103c906994f283f504209dc8d2a10c"),
+    "unsloth_ud30": ("unsloth/Qwen3.8-Flash-Next-GGUF", "38bb39ee97821de2c9009abb7e93950eec396e66"),
     "qwen36": ("unsloth/Qwen3.6-35B-A3B-MTP-GGUF", "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d"),
     "qwen38_27b": ("unsloth/Qwen3.8-27B-GGUF", "4ca720788d1e01f1bff70c033e0d0028fd02e502"),
     "draft": ("eddoursul/Lamina-Qwen3.8-Flash-Next-MTP", "362952648189e083ee413b3cdcac53eb5f0d183e"),
@@ -76,8 +78,19 @@ IQ3_S = [
         (1, 54817524224, "4c1eb2ceb4915e1192f4f386021897bde56a97f40a0bb78bb86465e0f7d2aca3"),
         (2, 28800138432, "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"))
 ]
+# unsloth's Dynamic 3.1 upload: the Dynamic 3.0 tensors byte for byte, the PLE table in shard 4 alone
 UD_Q4_K_XL = [
     File("unsloth", f"UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-0000{i}-of-00004.gguf",
+         f"models/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-0000{i}-of-00004.gguf", size, sha)
+    for i, size, sha in (
+        (1, 10946618, "acc44040f74d0e55fb89c3967056cce5dbda1bcc52e909c3ba6fc72b5e9c0858"),
+        (2, 49720539552, "45792ae869072d8229384c51c7c73dd959e191505252b41dd71852d9746f5ce4"),
+        (3, 32803030176, "8c76e79d444b16a663d9c8db54e585ed3b1da13eebd2619c37b0c355da803c82"),
+        (4, 28800138432, "5de8b5dbf89409acc39468decafd4a4a95b13c29d88a14b0356107897829ec36"))
+]
+# the Dynamic 3.0 upload's shards of the same tensors, with the same names
+UD_Q4_K_XL_30 = [
+    File("unsloth_ud30", f"UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-0000{i}-of-00004.gguf",
          f"models/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-0000{i}-of-00004.gguf", size, sha)
     for i, size, sha in (
         (1, 10946624, "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"),
@@ -121,11 +134,12 @@ class Model:
     ram_gb: int           # the RAM it takes while running (its experts pinned)
     mmproj: File | None = None   # the Qwen3.6 path's image projector (Flash-Next's: FLASH_MMPROJ)
     vram_gb: int = 0      # the VRAM of every GPU together it needs (its layers split over them), 0: one GPU's
+    earlier: tuple = ()   # earlier uploads of the same tensors (model_files)
 
 
 MODELS = {
     "iq3_s": Model("Qwen3.8-Flash-Next IQ3_S", IQ3_S, True, 8081, 53),
-    "ud-q4_k_xl": Model("Qwen3.8-Flash-Next UD-Q4_K_XL", UD_Q4_K_XL, True, 8082, 81),
+    "ud-q4_k_xl": Model("Qwen3.8-Flash-Next UD-Q4_K_XL", UD_Q4_K_XL, True, 8082, 81, earlier=(UD_Q4_K_XL_30,)),
     "qwen36-ud-q4_k_xl": Model("Qwen3.6-35B-A3B UD-Q4_K_XL", QWEN36, False, 8083, 22, QWEN36_MMPROJ),
     "qwen38-27b-ud-q6_k_m": Model("Qwen3.8-27B UD-Q6_K_M", QWEN38_27B, False, 8084, 2, QWEN38_27B_MMPROJ, 36),
 }
@@ -589,6 +603,15 @@ def fetch(f: File, data: Path):
     download(f"{hf_endpoint()}/{repo}/resolve/{rev}/{f.path}", data / f.dest, f.size, f.sha256)
 
 
+def model_files(m: Model, data: Path) -> list:
+    """m's files: those of an earlier upload of the same tensors (Model.earlier) when one of them is in place at its
+    size (that upload is kept and completed), else the current upload's."""
+    for files in m.earlier:
+        if any((data / f.dest).is_file() and (data / f.dest).stat().st_size == f.size for f in files):
+            return files
+    return m.files
+
+
 # ---- the model's preparation
 
 def tool(name: str, *args):
@@ -756,7 +779,7 @@ def main() -> int:
         if m.vram_gb and sum(g.mem_mib for g in usable) < m.vram_gb * 1024:
             warn(f"its layers need ~{m.vram_gb} GB of VRAM over every GPU, and these have "
                  f"{sum(g.mem_mib for g in usable) / 1024:.0f} GB: a shorter --context, or another GPU")
-        files = m.files + (DRAFT if m.flash_next else [])
+        files = model_files(m, data) + (DRAFT if m.flash_next else [])
         need = sum(f.size for f in files)
         missing = sum(f.size for f in files if not (data / f.dest).exists())
         say(f"  {need / 1e9:.0f} GB of files in {data}: {missing / 1e9:.0f} GB to download, {free_gb(data):.0f} GB free")
@@ -812,7 +835,7 @@ def main() -> int:
         say("\nDone: the engine is built. Prepare a model with --model (" + ", ".join(MODELS) + ").")
         return 0
     say(f"\n3. {m.title}'s files")
-    for f in m.files:
+    for f in model_files(m, data):
         fetch(f, data)
     say("\n4. preparing them")
     prepare(a.model, m, data, vision)

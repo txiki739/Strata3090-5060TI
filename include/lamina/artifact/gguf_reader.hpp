@@ -530,9 +530,9 @@ private:
         data_start_ = (c.pos() + align - 1) / align * align;
         if (data_start_ > size_) {
             // A file with tensors needs its data section.  One without (a split model's metadata-only first
-            // shard) may end at its header, before the aligned start - unsloth's UD-Q5_K_XL shard 1 ends 6 bytes
-            // short, and llama.cpp's gguf-py reads it.  Nothing is read there; the clamp keeps
-            // `file_size() - data_start()` (the payload checks downstream) at 0 instead of wrapping.
+            // shard) may end at its header, before the aligned start - unsloth's UD-Q5_K_XL and Dynamic 3.1
+            // UD-Q4_K_XL shard 1 end 6 bytes short, and llama.cpp's gguf-py reads them.  Nothing is read there; the
+            // clamp keeps `file_size() - data_start()` (the payload checks downstream) at 0 instead of wrapping.
             if (n_tensors != 0) throw std::runtime_error("GGUF: data section starts past EOF");
             data_start_ = size_;
         }
@@ -572,8 +572,9 @@ inline uint64_t tensor_payload_bytes(const TensorInfo& t) {
 // model rather than of one loader: a split GGUF carries the model's metadata (general.architecture and the
 // qwen4exp keys) in its FIRST shard only, and the later shards just declare split.count / split.no /
 // split.tensors.count.  Unsloth's UD-Q4_K_XL is the extreme case: shard 1 holds the metadata and no tensor at
-// all, and output.weight, token_embd.weight and the PLE table live in shard 2.  So the architecture is checked
-// on `meta()` and a tensor is read from the shard that holds it.
+// all, output.weight and token_embd.weight live in shard 2, and the PLE table in shard 4 (shard 2 in the
+// Dynamic 3.0 upload).  So the architecture is checked on `meta()` and a tensor is read from the shard that
+// holds it.
 //
 // Refused at construction: a later shard whose split keys disagree with shard 1's (another model's shard, or a
 // shard renamed into the family), a split model whose tensor directories do not add up to split.tensors.count,
