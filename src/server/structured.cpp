@@ -2874,8 +2874,15 @@ std::vector<const Val*> subresources_of(const Val& c, Draft d) {
     for (const std::string_view key : s.value)
         if (const Val* v = c.get(key)) out.push_back(v);
     for (const std::string_view key : s.subarray)
-        if (const Val* v = c.get(key); v != nullptr && v->k == K::List)
-            for (const Val& e : v->list) out.push_back(&e);
+        if (const Val* v = c.get(key)) {   // `yield from contents[each]`
+            if (v->k == K::List) {
+                for (const Val& e : v->list) out.push_back(&e);
+            } else if (v->k == K::Dict || v->k == K::Str) {   // its keys or characters: strs, which the crawl asks for
+                if (v->k == K::Dict ? !v->dict.empty() : !v->s.empty()) no_attribute(Val::str(""), "get");   // .get
+            } else {
+                raise("TypeError", std::string("'") + type_name(*v) + "' object is not iterable");
+            }
+        }
     for (const std::string_view key : s.subvalues) {
         if (const Val* v = c.get(key)) {
             if (v->k != K::Dict) no_attribute(*v, "values");
@@ -3867,14 +3874,25 @@ KEYWORD(kw_if) {
     return other == nullptr || descend(r, c, inst, *other, s);
 }
 
+/// zip(enumerate(instance), subschemas): iter() of both at once (a TypeError for an int, a bool or None, items or
+/// not), then each item against its subschema until the shorter ends; a dict gives its keys, a str its characters
+bool zip_items(Run& r, const Ctx& c, const Val& inst, const Val& subs, Sink& s) {
+    size_t k = 0;
+    bool ended = false;   // the items ran out: zip's end, not an error
+    const bool ok = each_item(subs, [&](const Val& sub) {
+        if (k >= inst.list.size()) {
+            ended = true;
+            return false;
+        }
+        const std::string p = index_str(k);
+        return descend(r, c, inst.list[k++], sub, s, &p);
+    });
+    return ok || ended;
+}
+
 KEYWORD(kw_prefix_items) {
     if (inst.k != K::List) return true;
-    if (v.k != K::List) return true;
-    for (size_t k = 0; k < inst.list.size() && k < v.list.size(); ++k) {
-        const std::string p = index_str(k);
-        if (!descend(r, c, inst.list[k], v.list[k], s, &p)) return false;
-    }
-    return true;
+    return zip_items(r, c, inst, v, s);
 }
 
 KEYWORD(kw_pattern_properties) {
@@ -3945,11 +3963,10 @@ KEYWORD(kw_extends_d3) {
 
 KEYWORD(kw_items_d3) {
     if (inst.k != K::List) return true;
+    if (v.k != K::Dict) return zip_items(r, c, inst, v, s);
     for (size_t k = 0; k < inst.list.size(); ++k) {
-        const Val* sub = v.k == K::Dict ? &v : v.k == K::List && k < v.list.size() ? &v.list[k] : nullptr;
-        if (sub == nullptr) break;
         const std::string p = index_str(k);
-        if (!descend(r, c, inst.list[k], *sub, s, &p)) return false;
+        if (!descend(r, c, inst.list[k], v, s, &p)) return false;
     }
     return true;
 }

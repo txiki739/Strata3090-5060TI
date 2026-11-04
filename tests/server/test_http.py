@@ -602,6 +602,41 @@ class KeyBeforeBody(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class PythonIteration(unittest.TestCase):
+    """Where jsonschema's zip() and referencing's `yield from` meet a value that is not a list (places no metaschema
+    checks), the answer's check fails as Python's does (upstream's structured.py with jsonschema 4.26)."""
+    D4, D20 = "http://json-schema.org/draft-04/schema#", "https://json-schema.org/draft/2020-12/schema"
+
+    def crawl(self, prefix):   # a draft-04 root's anchor lookup crawls an embedded 2020-12 resource
+        return {"$schema": self.D4, "type": "object", "properties": {"a": {"$ref": "#foo"}}, "definitions": {
+            "d": {"id": "urn:d", "$schema": self.D20, "prefixItems": prefix}, "f": {"id": "#foo"}}}
+
+    def test_cases(self):
+        cases = [({"type": "object", "properties": {"a": {"$schema": self.D4, "items": True}}}, '{"a": []}',
+                  "'bool' object is not iterable"),
+                 ({"type": "object", "properties": {"a": {"$ref": "#/x/p"}}, "x": {"p": {"prefixItems": 5}}}, '{"a": [1]}',
+                  "'int' object is not iterable"),
+                 ({"type": "object", "properties": {"a": {"$ref": "#/x/p"}}, "x": {"p": {"prefixItems": {"k": 1}}}},
+                  '{"a": [1]}', "'str' object has no attribute 'get'"),
+                 (self.crawl(5), '{"a": 1}', "'int' object is not iterable"),
+                 (self.crawl("ab"), '{"a": 1}', "'str' object has no attribute 'get'"),
+                 (self.crawl({}), '{"a": 1}', None)]
+        for schema, answer, error in cases:
+            with self.subTest(schema=schema):
+                port, proc, log = mock_server(self, "--script", "</think>\n\n" + answer)
+                wait_ready(port, proc, "lamina-server", log)
+                body = {"model": "m", "messages": msgs(), "response_format": {"type": "json_schema", "json_schema": {
+                    "name": "x", "schema": schema}}}
+                status, ctype, raw = call(port, "POST", "/v1/chat/completions", body, {})
+                if error is None:
+                    self.assertEqual(status, 200, raw)
+                else:
+                    self.assertEqual((status, error in raw.decode()), (502, True), raw)
+                proc.terminate()
+                proc.wait(10)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class BigIntSchema(unittest.TestCase):
     """A schema's ints past 64 bits are Python's: exact in the validation and in the prompt."""
     BIG = 18446744073709551617
