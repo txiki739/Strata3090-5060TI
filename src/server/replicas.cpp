@@ -466,7 +466,7 @@ void ReplicaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, c
             all.insert(all.end(), produced.begin(), produced.end());
             router_.note((size_t) k, all);
         }
-        prefill_tok_s_mean = e.prefill_tok_s_mean;
+        update_progress([mean = e.progress().tok_s_mean](Progress& p) { p.tok_s_mean = mean; });
         refresh_info();
     };
     try {

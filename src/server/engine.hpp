@@ -124,9 +124,23 @@ public:
     json info = json::object();            ///< INFO key=value facts (the Monitor)
     std::optional<Held> held;              ///< after a text request that ended with DONE
     std::vector<int32_t> drained;          ///< the tokens the engine sent after a STOP (it holds them)
-    std::optional<std::pair<int64_t, int64_t>> progress;   ///< (read, total) prompt tokens from PP lines
-    double progress_ms = 0, prefill_tok_s_mean = -1;
-    int64_t reused = 0;
+    /// the running request's prompt progress, from its PP and RESUME lines: its thread writes it while HTTP threads
+    /// read it (/metrics, the keep-alives' prompt_progress), so a copy under a lock
+    struct Progress {
+        std::optional<std::pair<int64_t, int64_t>> read;   ///< (read, total) prompt tokens
+        double ms = 0;                                    ///< the prompt's time so far
+        double tok_s_mean = -1;                           ///< the engine's mean prompt rate (-1: none)
+        int64_t reused = 0;                               ///< the prompt tokens it continues from
+    };
+    Progress progress() const {
+        std::lock_guard<std::mutex> lk(progress_mu_);
+        return progress_;
+    }
+    template <class F>
+    void update_progress(F&& f) {
+        std::lock_guard<std::mutex> lk(progress_mu_);
+        f(progress_);
+    }
     double silence_s = 300.0;              ///< the config's engine_silence_s (0: wait for ever)
     std::string model_path;
     bool can_stop = true;
@@ -135,6 +149,10 @@ protected:
     int64_t max_context_ = 0, known_ctx_ = 0;
     std::atomic<bool> starting_{false};
     int batch_ = 0;
+
+private:
+    mutable std::mutex progress_mu_;
+    Progress progress_;
 };
 
 /// how a LaminaEngine runs: on a thread of this process (the default), or as a `lamina --serve` child of its own

@@ -283,9 +283,13 @@ void LaminaEngine::control(Cancel& cancel, const std::function<void(int32_t)>& o
         } else if (starts_with(line, "PP ")) {
             const std::vector<std::string> f = split_ws(line);
             if (f.size() >= 3 && digits(f[1]) && digits(f[2])) {
-                progress = std::make_pair((int64_t) std::atoll(f[1].c_str()), (int64_t) std::atoll(f[2].c_str()));
-                progress_ms = f.size() >= 4 ? std::atof(f[3].c_str()) : 0.0;
-                prefill_tok_s_mean = f.size() >= 5 ? std::atof(f[4].c_str()) : -1;
+                const std::pair<int64_t, int64_t> pp(std::atoll(f[1].c_str()), std::atoll(f[2].c_str()));
+                const double ms = f.size() >= 4 ? std::atof(f[3].c_str()) : 0.0, mean = f.size() >= 5 ? std::atof(f[4].c_str()) : -1;
+                update_progress([&](Progress& p) {
+                    p.read = pp;
+                    p.ms = ms;
+                    p.tok_s_mean = mean;
+                });
             }
             if (!stopped && cancel.is_set()) {   // #879: a Stop during the prompt read goes out at once
                 send("STOP");
@@ -508,9 +512,11 @@ void LaminaEngine::generate_batched(const std::vector<int32_t>& ids, int64_t max
                                     const std::string& embeddings, const std::function<bool(int32_t)>& on_token,
                                     const std::function<bool()>& on_beat) {
     if (!alive()) throw EngineDied("the engine is unavailable; this request was not sent");
-    progress.reset();
-    progress_ms = 0;
-    reused = 0;
+    update_progress([](Progress& p) {
+        p.read.reset();
+        p.ms = 0;
+        p.reused = 0;
+    });
     tl_last = json::object();
     int born = gen_;
     const std::string keys = sampling_keys(sampling);
@@ -796,7 +802,8 @@ void LaminaEngine::generate_batched(const std::vector<int32_t>& ids, int64_t max
                 };
                 auto note_progress = [&] {   // the live prompt counter of the admission
                     std::lock_guard<std::mutex> lk(slot_mu_);
-                    if (progress && live != nullptr && (*live)["state"] == "reading") (*live)["prompt_read"] = progress->first;
+                    const auto read = progress().read;
+                    if (read && live != nullptr && (*live)["state"] == "reading") (*live)["prompt_read"] = read->first;
                 };
                 try {
                     control(cancel, emit, nullptr, [&] {

@@ -29,10 +29,11 @@ json prompt_progress(Service& svc) {
     // llama.cpp's prompt_progress, so a client written for llama.cpp reads both servers: `processed` counts from token
     // 0, and the client takes the reused prefix out with `cache`
     Engine& e = *svc.engine;
-    if (e.batch() > 0 || !e.progress) return nullptr;   // --batch: the engine's progress is one global line
-    const auto [read, total] = *e.progress;
+    const Engine::Progress pr = e.progress();
+    if (e.batch() > 0 || !pr.read) return nullptr;   // --batch: the engine's progress is one global line
+    const auto [read, total] = *pr.read;
     if (total <= 0 || total - read <= kPpDoneTail) return nullptr;
-    return {{"total", total}, {"cache", e.reused}, {"processed", read}, {"time_ms", (int64_t) e.progress_ms}};
+    return {{"total", total}, {"cache", pr.reused}, {"processed", read}, {"time_ms", (int64_t) pr.ms}};
 }
 
 void openai_chunks(Service& svc, const json& req, const std::vector<int32_t>& ids, bool thinking, const json& tools,

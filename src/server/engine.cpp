@@ -480,10 +480,7 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
         return;
     }
     std::vector<int32_t> sent;   // every token of this request, the drained ones too
-    progress.reset();
-    progress_ms = 0;
-    reused = 0;
-    prefill_tok_s_mean = -1;
+    update_progress([](Progress& p) { p = Progress{}; });
     pending_ = json::object();
     // an image request takes the same sampling keys as text
     std::string head = embeddings.empty() ? "GEN " + std::to_string(max_new) + sampling_keys(sampling)
@@ -606,12 +603,16 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
         } else if (starts_with(l, "PP ")) {
             const std::vector<std::string> f = split_ws(l);
             if (f.size() >= 3 && digits(f[1]) && digits(f[2])) {
-                progress = std::make_pair((int64_t) std::atoll(f[1].c_str()), (int64_t) std::atoll(f[2].c_str()));
-                progress_ms = f.size() >= 4 ? std::atof(f[3].c_str()) : 0.0;
-                prefill_tok_s_mean = f.size() >= 5 ? std::atof(f[4].c_str()) : -1;
-                const double rate = prefill_tok_s_mean > 0 ? prefill_tok_s_mean : 0.0;
-                const int64_t chunk = progress->first - read_to;
-                read_to = progress->first;
+                const std::pair<int64_t, int64_t> pp(std::atoll(f[1].c_str()), std::atoll(f[2].c_str()));
+                const double ms = f.size() >= 4 ? std::atof(f[3].c_str()) : 0.0, mean = f.size() >= 5 ? std::atof(f[4].c_str()) : -1;
+                update_progress([&](Progress& p) {
+                    p.read = pp;
+                    p.ms = ms;
+                    p.tok_s_mean = mean;
+                });
+                const double rate = mean > 0 ? mean : 0.0;
+                const int64_t chunk = pp.first - read_to;
+                read_to = pp.first;
                 if (silence > 0 && rate > 0 && chunk > 0) allow = std::max(silence, kPpSlack * (double) chunk / rate);
             }
             if (cancel.is_set() || !calling(on_beat)) {
@@ -621,7 +622,10 @@ void LaminaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, co
             }
         } else if (starts_with(l, "RESUME ")) {   // the reused tokens: the first chunk starts after them
             const std::vector<std::string> f = split_ws(l);
-            if (f.size() > 1 && digits(f[1])) read_to = reused = std::atoll(f[1].c_str());
+            if (f.size() > 1 && digits(f[1])) {
+                read_to = std::atoll(f[1].c_str());
+                update_progress([&](Progress& p) { p.reused = read_to; });
+            }
         } else if (starts_with(l, "CACHE ")) {   // the prompt cache's state: the Monitor's Conversation cache card
             cache_line(l);
         } else if (note_line(l)) {

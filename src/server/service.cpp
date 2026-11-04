@@ -840,7 +840,8 @@ json Service::prefill_tok_s_mean() {
         reading = truthy(jget(status, "busy")) && jget(status, "first_token").is_null();
     }
     if (!reading) return 0.0;
-    return engine->prefill_tok_s_mean >= 0 ? json(engine->prefill_tok_s_mean) : json(nullptr);
+    const double mean = engine->progress().tok_s_mean;
+    return mean >= 0 ? json(mean) : json(nullptr);
 }
 
 std::shared_ptr<json> Service::begin_request(const std::string& path, const json& req) {
@@ -912,6 +913,7 @@ json Service::metrics(bool all_requests) {
     const bool busy = truthy(jget(s, "busy"));
     const std::string state = busy && jget(s, "first_token").is_null() ? "reading" : busy ? "generating"
                               : !loaded() ? "unloaded" : "idle";
+    const Engine::Progress pr = engine->progress();
     json live = {{"state", state}, {"queued", jget(s, "queued")}, {"phase", busy ? jget(s, "phase") : json(nullptr)},
                  {"prompt_tokens", busy ? jget(s, "prompt_tokens") : json(nullptr)}, {"prompt_read", nullptr},
                  {"prompt_total", nullptr}, {"generated", busy ? jget(s, "generated") : json(nullptr)},
@@ -919,11 +921,11 @@ json Service::metrics(bool all_requests) {
                  {"elapsed_s", busy && jget(s, "started").is_number() ? json(py_round(now - s["started"].get<double>(), 1)) : json(nullptr)},
                  {"tok_s", state == "generating" ? json(py_round(tok_s(), 1)) : json(nullptr)},
                  {"tok_s_mean", state == "generating" ? json(py_round(tok_s_mean(), 1)) : json(nullptr)},
-                 {"prefill_tok_s_mean", busy && engine->prefill_tok_s_mean >= 0 ? json(engine->prefill_tok_s_mean) : json(nullptr)},
+                 {"prefill_tok_s_mean", busy && pr.tok_s_mean >= 0 ? json(pr.tok_s_mean) : json(nullptr)},
                  {"tok_s_window_s", state == "generating" ? json(2.0) : json(nullptr)}};
-    if (state == "reading" && engine->progress) {
-        live["prompt_read"] = engine->progress->first;
-        live["prompt_total"] = engine->progress->second;
+    if (state == "reading" && pr.read) {
+        live["prompt_read"] = pr.read->first;
+        live["prompt_total"] = pr.read->second;
     }
     if (const int par = engine->batch()) {
         size_t running;
@@ -1170,7 +1172,7 @@ double Service::progress_line(double last_print, json& st, double every) {
             }
             return out;
         };
-        const auto pr = engine->progress;
+        const auto pr = engine->progress().read;
         const std::string done = pr && pr->second ? with_commas(pr->first) + " of " + with_commas(pr->second)
                                                   : with_commas(jget(s, "prompt_tokens").is_number() ? s["prompt_tokens"].get<int64_t>() : 0);
         std::snprintf(buf, sizeof buf, "[lamina] reading the prompt: %s tokens, %.0f s so far", done.c_str(), el);
