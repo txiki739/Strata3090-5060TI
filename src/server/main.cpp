@@ -712,6 +712,10 @@ int run(int argc, char** argv) {
             svc.wait_for_drain(5);
             drained = false;
         }
+    } else {   // no time given to finish: the running and the queued requests stop now (a console close allows 4.5 s)
+        svc.begin_drain();
+        if (const int64_t n = svc.cancel_owned_requests()) say("[lamina] stopping " + std::to_string(n) + " request(s) ...");
+        svc.wait_for_drain(5);
     }
     http.stop();
     if (svc.telemetry != nullptr) svc.telemetry->close();
