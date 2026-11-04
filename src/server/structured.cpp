@@ -3007,6 +3007,9 @@ struct Resolved {
 
 /// Python's recursion limit (1000 frames), less the server's frames below validated_json
 constexpr int kMaxFrames = 981;
+/// frames in all for one run (check_schema, an answer's iter_errors): Python's has no limit, and allOf / oneOf chains
+/// whose two branches name the same next one double per level; a large schema's check takes a few million
+constexpr uint64_t kMaxRunFrames = 5000000;
 
 /// compiled patterns, and the errors of those that do not compile (raised where Python would compile them)
 struct Patterns {
@@ -3060,6 +3063,7 @@ struct Run {
     Patterns& patterns;
     bool formats = false;            ///< check_schema's format checker
     int frames = 0;
+    uint64_t frames_all = 0;         ///< the run's frames so far (kMaxRunFrames)
     std::vector<std::string> path;   ///< where in the instance
     std::deque<std::string> uris;
     std::deque<Scope> scopes;
@@ -3077,6 +3081,10 @@ struct PyFrame {
         if (++r.frames > kMaxFrames) {
             --r.frames;
             raise("RecursionError", "maximum recursion depth exceeded");
+        }
+        if (++r.frames_all > kMaxRunFrames) {   // a ValueError: the schema's 400, an answer's 502
+            --r.frames;
+            raise("ValueError", "the schema takes more than " + std::to_string(kMaxRunFrames) + " steps to check");
         }
     }
     ~PyFrame() { --r.frames; }
@@ -4305,10 +4313,17 @@ const json* ref_target(const json& root, std::string_view ref) {
     return target;
 }
 
+/// _only_objects' calls in all: Python's walks a union's branches again wherever a $ref chain reaches it, 2^n for n
+/// levels of unions that name the same next one (days at 40), so past this a schema is refused instead
+constexpr int64_t kMaxObjectVisits = 1000000;
+
 /// _only_objects: every value the schema accepts is a JSON object. `frames`: Python's in use (a call each, and for a
-/// union the generator of all() / any() too)
-bool only_objects(const json& node, const json& root, std::vector<std::string>& refs, int frames) {
+/// union the generator of all() / any() too); `visits`: the calls so far
+bool only_objects(const json& node, const json& root, std::vector<std::string>& refs, int frames, int64_t& visits) {
     if (frames > kMaxSchemaFrames) too_deep();
+    if (++visits > kMaxObjectVisits)
+        throw RequestError("response_format schema is too complex to check: its unions are walked more than " +
+                           std::to_string(kMaxObjectVisits) + " times");
     if (!node.is_object()) return false;
     if (jget(node, "type") == "object") return true;
     if (const json& ref = jget(node, "$ref"); ref.is_string()) {
@@ -4317,7 +4332,7 @@ bool only_objects(const json& node, const json& root, std::vector<std::string>& 
             const json* target = ref_target(root, r);
             if (target == nullptr) return false;
             refs.push_back(r);
-            const bool ok = only_objects(*target, root, refs, frames + 1);
+            const bool ok = only_objects(*target, root, refs, frames + 1, visits);
             refs.pop_back();
             return ok;
         }
@@ -4327,7 +4342,7 @@ bool only_objects(const json& node, const json& root, std::vector<std::string>& 
         if (!branches.is_array() || branches.empty()) continue;
         bool all = true;
         for (const json& b : branches) {
-            if (!only_objects(b, root, refs, frames + 2)) {
+            if (!only_objects(b, root, refs, frames + 2, visits)) {
                 all = false;
                 break;
             }
@@ -4337,7 +4352,7 @@ bool only_objects(const json& node, const json& root, std::vector<std::string>& 
     const json& all = jget(node, "allOf");
     if (!all.is_array()) return false;
     for (const json& b : all)
-        if (only_objects(b, root, refs, frames + 2)) return true;
+        if (only_objects(b, root, refs, frames + 2, visits)) return true;
     return false;
 }
 
@@ -4456,7 +4471,8 @@ std::pair<json, std::shared_ptr<const Validator>> prepare_format(const json& res
             throw RequestError("response_format.json_schema.strict must be boolean");
         chosen = &jget(spec, "schema");
         std::vector<std::string> refs;
-        if (!only_objects(*chosen, *chosen, refs, 1))
+        int64_t visits = 0;
+        if (!only_objects(*chosen, *chosen, refs, 1, visits))
             throw RequestError("response_format schema must accept only JSON objects at its root "
                                "(type object, or anyOf/oneOf of object schemas)");
         validator->object_only = false;

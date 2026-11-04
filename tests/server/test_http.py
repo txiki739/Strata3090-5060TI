@@ -504,6 +504,36 @@ class HugeLimits(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class SchemaBudget(unittest.TestCase):
+    """Unions whose two branches name the same next $def double the work per level (Python's too): refused quickly,
+    the schema's with a 400, an answer's check with a 502."""
+
+    @staticmethod
+    def chain(key, levels, last):
+        defs = {f"d{k}": {key: [{"$ref": f"#/$defs/d{k + 1}"}] * 2} for k in range(levels)}
+        defs[f"d{levels}"] = last
+        return defs
+
+    def ask(self, port, schema):
+        body = {"model": "m", "messages": msgs(), "response_format": {"type": "json_schema",
+                                                                      "json_schema": {"name": "x", "schema": schema}}}
+        t0 = time.time()
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", body, {})
+        self.assertLess(time.time() - t0, 20, "took too long")
+        return status, parse_body(ctype, raw)["error"]["message"]
+
+    def test_refused(self):
+        port, proc, log = mock_server(self, "--script", "</think>\n\n{}")
+        wait_ready(port, proc, "lamina-server", log)
+        status, message = self.ask(port, {"$ref": "#/$defs/d0", "$defs": self.chain("anyOf", 40, {"type": "object"})})
+        self.assertEqual(status, 400, message)
+        self.assertIn("too complex", message)
+        status, message = self.ask(port, {"type": "object", "$ref": "#/$defs/d0", "$defs": self.chain("allOf", 30, {})})
+        self.assertEqual(status, 502, message)
+        self.assertIn("steps to check", message)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class HttpGolden(unittest.TestCase):
     def test_answers(self):
         want = json.loads(GOLDEN.read_text(encoding="utf-8"))
