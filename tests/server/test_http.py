@@ -532,6 +532,15 @@ class SchemaBudget(unittest.TestCase):
         self.assertEqual(status, 502, message)
         self.assertIn("steps to check", message)
 
+    def test_pattern_memory(self):
+        # a repeat of empty steps: each step one more choice and undo entry, gigabytes before the step budget
+        port, proc, log = mock_server(self, "--script", '</think>\n\n{"a": "abc"}')
+        wait_ready(port, proc, "lamina-server", log)
+        status, message = self.ask(port, {"type": "object", "properties": {"a": {"type": "string",
+                                                                                 "pattern": "(?:x??){99999999}"}}})
+        self.assertEqual(status, 502, message)
+        self.assertIn("too much memory", message)
+
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class MissingCallEnd(unittest.TestCase):

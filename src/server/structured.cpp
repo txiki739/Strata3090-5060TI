@@ -1187,7 +1187,8 @@ constexpr uint64_t kMaxCode = 0xFFFFFFFFu;
 constexpr int64_t kMaxGroups = 1073741823;     // _sre.MAXGROUPS
 constexpr int kMaxNesting = 100;               // _parse levels (Python's recursion limit allows about 490): a
                                                // pattern's stack, here, grows by about 2 KB a level
-constexpr uint64_t kMaxSteps = 100000000;      // a search's budget (Python's has none)
+constexpr uint64_t kMaxSteps = 100000000;      // the searches' budget in one validation (Python's has none)
+constexpr size_t kMaxMatchBytes = 256u << 20;  // a search's backtracking state (choices and undo entries)
 
 enum class Op : uint8_t {
     Literal, NotLiteral, Any, In, At, Branch, Subpattern, Atomic, MaxRepeat, MinRepeat, PossRepeat, GroupRef,
@@ -2253,7 +2254,8 @@ void Compiler::item(const Node& n, int flags) {
 /// a backtracking machine: choice points and an undo log of the registers (group marks, repeat counts)
 class Machine {
 public:
-    Machine(const Prog& p, const std::u32string& s) : p_(p), s_(s), n_((int64_t) s.size()) {}
+    Machine(const Prog& p, const std::u32string& s, uint64_t& steps)
+        : p_(p), s_(s), n_((int64_t) s.size()), steps_(steps) {}
     bool search();
 
 private:
@@ -2301,6 +2303,8 @@ private:
     }
     void step() {
         if (++steps_ > kMaxSteps) raise("RuntimeError", "regular expression matching took too long");
+        if (stack_.size() * sizeof(Choice) + undo_.size() * sizeof(Undo) > kMaxMatchBytes)   // a repeat of empty steps
+            raise("RuntimeError", "regular expression matching took too much memory");
     }
     uint32_t ch(int64_t k) const { return (uint32_t) s_[(size_t) k]; }
 
@@ -2310,7 +2314,7 @@ private:
     std::vector<int64_t> marks_, count_, last_;
     std::vector<Undo> undo_;
     std::vector<Choice> stack_;
-    uint64_t steps_ = 0;
+    uint64_t& steps_;   ///< shared by a validation's searches
 };
 
 bool Machine::at(uint32_t code, int64_t sp) const {
@@ -2540,9 +2544,9 @@ std::shared_ptr<const Prog> compile(const std::string& pattern) {
     return std::make_shared<const Prog>(std::move(cc.prog));
 }
 
-bool search(const Prog& prog, std::string_view subject) {
+bool search(const Prog& prog, std::string_view subject, uint64_t& steps) {
     const std::u32string s = code_points(subject);
-    Machine m(prog, s);
+    Machine m(prog, s, steps);
     return m.search();
 }
 
@@ -3064,6 +3068,7 @@ struct Run {
     bool formats = false;            ///< check_schema's format checker
     int frames = 0;
     uint64_t frames_all = 0;         ///< the run's frames so far (kMaxRunFrames)
+    uint64_t re_steps = 0;           ///< its searches' steps so far (kMaxSteps)
     std::vector<std::string> path;   ///< where in the instance
     std::deque<std::string> uris;
     std::deque<Scope> scopes;
@@ -3466,7 +3471,7 @@ bool type_is(const Ctx& c, const Val& inst, const Val& type, const Val& schema) 
 
 /// re.search(pattern, string)
 bool re_search(Run& r, const std::string& pattern, std::string_view subject) {
-    return re::search(r.patterns.get(pattern), subject);
+    return re::search(r.patterns.get(pattern), subject, r.re_steps);
 }
 
 bool re_search(Run& r, const Val& pattern, std::string_view subject) {
