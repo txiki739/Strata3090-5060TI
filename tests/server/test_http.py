@@ -491,6 +491,19 @@ class TemplateRefusal(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class HugeLimits(unittest.TestCase):
+    """A limit past int64 is Python's big int: as many as fit (max_tokens shortened to the room), never a 500."""
+
+    def test_max_tokens(self):
+        port, proc, log = mock_server(self, "--script", "</think>\n\nFine.")
+        wait_ready(port, proc, "lamina-server", log)
+        for value in ('"99999999999999999999"', '"-99999999999999999999"', "1e300", "18446744073709551615"):
+            body = '{"model": "m", "max_tokens": %s, "messages": [{"role": "user", "content": "Hi"}]}' % value
+            status, ctype, raw = call(port, "POST", "/v1/chat/completions", body, {})
+            self.assertEqual((status, parse_body(ctype, raw)["choices"][0]["message"]["content"]), (200, "Fine."), value)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class HttpGolden(unittest.TestCase):
     def test_answers(self):
         want = json.loads(GOLDEN.read_text(encoding="utf-8"))

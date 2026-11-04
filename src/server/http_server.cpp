@@ -17,12 +17,14 @@
 #include <httplib.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 
 namespace lamina {
@@ -55,11 +57,16 @@ std::string head_chars(const std::string& s, size_t n) {
 
 /// int() of a request field: an int, a float (truncated), a bool or a string of digits; RequestError otherwise
 int64_t py_int(const json& v) {
+    // Python's int has no bound: a value past int64's is the same "as many as fit" for every limit read with this
+    constexpr int64_t kMax = std::numeric_limits<int64_t>::max(), kMin = std::numeric_limits<int64_t>::min();
     if (v.is_boolean()) return v.get<bool>() ? 1 : 0;
+    if (v.is_number_unsigned()) return (int64_t) std::min<uint64_t>(v.get<uint64_t>(), (uint64_t) kMax);
     if (v.is_number_integer()) return v.get<int64_t>();
     if (v.is_number_float()) {
         const double d = v.get<double>();
         if (!std::isfinite(d)) throw RequestError("cannot convert float " + py_repr(d) + " to integer");
+        if (d >= 9223372036854775808.0) return kMax;
+        if (d < -9223372036854775808.0) return kMin;
         return (int64_t) std::trunc(d);
     }
     if (v.is_string()) {
@@ -67,7 +74,13 @@ int64_t py_int(const json& v) {
         size_t i = s.size() && (s[0] == '-' || s[0] == '+') ? 1 : 0;
         bool ok = i < s.size();
         for (size_t j = i; j < s.size(); ++j) ok = ok && ((s[j] >= '0' && s[j] <= '9') || (s[j] == '_' && j > i && j + 1 < s.size()));
-        if (ok) return std::stoll(replace_all(s, "_", ""));
+        if (ok) {
+            const std::string digits = replace_all(s.substr(s[0] == '+' ? 1 : 0), "_", "");
+            int64_t out = 0;
+            if (std::from_chars(digits.data(), digits.data() + digits.size(), out).ec == std::errc::result_out_of_range)
+                return digits[0] == '-' ? kMin : kMax;
+            return out;
+        }
         throw RequestError("invalid literal for int() with base 10: " + py_repr_value(v));
     }
     throw RequestError("int() argument must be a string, a bytes-like object or a real number, not '" +
