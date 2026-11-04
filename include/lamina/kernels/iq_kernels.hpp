@@ -1,6 +1,6 @@
 // include/lamina/kernels/iq_kernels.hpp - the GGUF expert and embedding formats on the GPU: the i-quants (IQ1_M,
-// IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S, IQ4_NL) and Q2_0 of the IQ2_XS / IQ3_XXS model files, and Q4_K, Q5_K,
-// Q5_1 and Q8_0 of the UD-Q4_K_XL file.
+// IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S, IQ4_NL) and Q2_0 of the IQ2_XS / IQ3_XXS model files, Q4_K, Q5_K,
+// Q5_1 and Q8_0 of the UD-Q4_K_XL file, and Q5_0 of unsloth's Dynamic 3.1 quants.
 //
 // The block layouts, codebook grids and dot products are llama.cpp's (ggml-common.h, ggml-cuda/vecdotq.cuh,
 // ggml-cuda/dequantize.cuh; MIT, see third_party/ggml/LICENSE and VERSION.txt), so a weight means exactly what it

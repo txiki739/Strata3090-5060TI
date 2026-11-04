@@ -12,7 +12,7 @@ namespace lamina::prefill::mmq {
 
 /// This build has the MMQ path (the ggml sources were available to the build).
 bool built();
-/// MMQ covers this ggml type (the i-quants and Q2_0 of ISTA-DASLab's files, the K-quants, Q5_1 and Q8_0 of
+/// MMQ covers this ggml type (the i-quants and Q2_0 of ISTA-DASLab's files, the K-quants, Q5_0, Q5_1 and Q8_0 of
 /// unsloth's; IQ1_M is not covered).
 bool supported(int ggml_type);
 /// `supported`, and on every visible GPU llama.cpp's MMQ has a tile for this type and a weight matrix of `w_rows` rows

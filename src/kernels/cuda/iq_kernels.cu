@@ -928,6 +928,23 @@ __device__ void dq_q5_1(const void* vx, int64_t ibs, dst_t* yy, int tid) {
         y[iqs + 16] = cvt<dst_t>((float) ((x[ib].qs[iqs] >> 4) | xh_1) * dm.x + dm.y);
     }
 }
+// dequantize_row_q5_0's values: (q - 16) * d
+template<typename dst_t>
+__device__ void dq_q5_0(const void* vx, int64_t ibs, dst_t* yy, int tid) {
+    const block_q5_0* x = (const block_q5_0*) vx + ibs * (QK_K / QK5_0);
+    const int ib = tid % 8, il = tid / 8;
+    const float d = __half2float(x[ib].d);
+    uint32_t qh;
+    memcpy(&qh, x[ib].qh, sizeof(qh));
+    dst_t* y = yy + 32 * ib;
+    for (int j = 0; j < 4; ++j) {
+        const int iqs = 4 * il + j;
+        const int xh_0 = ((qh >> (iqs + 0)) << 4) & 0x10;
+        const int xh_1 = ((qh >> (iqs + 12))) & 0x10;
+        y[iqs] = cvt<dst_t>((float) (((x[ib].qs[iqs] & 0xf) | xh_0) - 16) * d);
+        y[iqs + 16] = cvt<dst_t>((float) (((x[ib].qs[iqs] >> 4) | xh_1) - 16) * d);
+    }
+}
 template<typename dst_t>
 __device__ void dq_q8_0(const void* vx, int64_t ibs, dst_t* yy, int tid) {
     const block_q8_0* x = (const block_q8_0*) vx + ibs * (QK_K / QK8_0);
@@ -1004,6 +1021,7 @@ __device__ __forceinline__ void dq_dispatch(int ty, const void* vx, int64_t ibs,
         case 42: dq_q2_0(vx, ibs, y, tid); break;
         case 12: dq_q4_k(vx, ibs, y, tid); break;
         case 13: dq_q5_k(vx, ibs, y, tid); break;
+        case 6: dq_q5_0(vx, ibs, y, tid); break;
         case 7: dq_q5_1(vx, ibs, y, tid); break;
         case 8: dq_q8_0(vx, ibs, y, tid); break;
         case 14: dq_q6_k(vx, ibs, y, tid); break;
@@ -1040,7 +1058,7 @@ __global__ void dequant_experts_kernel(int gu_ty, int d_ty, const uint8_t* const
 // the formats dq_dispatch dequantizes
 bool is_iq(int t) {
     return t == 16 || t == 17 || t == 18 || t == 20 || t == 21 || t == 22 || t == 23 || t == 29 || t == 42 || t == 11 ||
-           t == 12 || t == 13 || t == 14 || t == 19 || t == 7 || t == 8 || (t >= 147 && t <= 149);
+           t == 12 || t == 13 || t == 14 || t == 19 || t == 6 || t == 7 || t == 8 || (t >= 147 && t <= 149);
 }
 
 }  // namespace
@@ -1063,6 +1081,7 @@ size_t iq_row_bytes(int t, int64_t n) noexcept {
         case 13: return (size_t) (n / 256) * sizeof(block_q5_K);
         case 14: return (size_t) (n / 256) * sizeof(block_q6_K);
         case 19: return (size_t) (n / 256) * sizeof(block_iq1_s);
+        case 6: return (size_t) (n / 32) * sizeof(block_q5_0);
         case 7: return (size_t) (n / 32) * sizeof(block_q5_1);
         case 8: return (size_t) (n / 32) * sizeof(block_q8_0);
         case 147: return (size_t) (n / 128) * sizeof(block_tqp5);

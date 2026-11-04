@@ -500,11 +500,12 @@ int main(int argc, char** argv) {
     // parity: every gate/up format with a down format in turn (down rows are n_ff = 640 long: 32- and 64-blocks);
     // bench: the model files' pairs (IQ2_XXS .. IQ4_XS with IQ4_NL / Q2_0: the IQ3_S file; Q2_0: the draft layer;
     // Q4_K, Q5_K with Q5_1, Q8_0: UD-Q4_K_XL; the TQP pairs: Gyro-L, Hadamard-folded with identity signs)
-    const int gus[] = {7, 8, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 29, 42}, downs[] = {7, 8, 20, 42};
+    const int gus[] = {6, 7, 8, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 29, 42}, downs[] = {6, 7, 8, 20, 42};
     std::vector<std::pair<int, int>> pairs;
     if (bench) pairs = {{16, 42}, {17, 20}, {18, 20}, {21, 42}, {22, 20}, {23, 20}, {42, 42}, {12, 7}, {13, 8}};
     else
-        for (size_t i = 0; i < sizeof gus / sizeof gus[0]; ++i) pairs.emplace_back(gus[i], downs[i % 4]);
+        for (size_t i = 0; i < sizeof gus / sizeof gus[0]; ++i)
+            pairs.emplace_back(gus[i], downs[i % (sizeof downs / sizeof downs[0])]);
     for (int t : {147, 148, 149}) pairs.emplace_back(t, t);
     int bad = 0;
     std::mt19937 rng(11);

@@ -468,6 +468,35 @@ __device__ __forceinline__ float vec_dot_q5_1_q8_1(const void* __restrict__ vbq,
     return sumi * (dm5.x * d8) + sumu * (dm5.y * d8);
 }
 
+// Q5_0 down (unsloth's Dynamic 3.1 UD-IQ2_XS, UD-Q2_K_XL, UD-Q3_K_XL, UD-IQ4_XS), llama.cpp's weights and VDR.  Its -16
+// goes into the integer sum, as MMQ's load_tiles_q5_0 and ggml-cpu's dot put it, where llama.cpp's vec_dot takes it
+// from the q8_1 block's sum of the original activations (Q5_1's min above).  A 22-byte block: 16-bit reads.
+constexpr int VDR_Q5_0 = 2;   // VDR_Q5_0_Q8_1_MMVQ
+__device__ __forceinline__ float vec_dot_q5_0_q8_1(const void* __restrict__ vbq, const block_q8_1* __restrict__ bq8_1,
+                                                   const int& kbx, const int& iqs) {
+    const block_q5_0* bq5_0 = (const block_q5_0*) vbq + kbx;
+    int sumi = 0;
+#pragma unroll
+    for (int i = 0; i < VDR_Q5_0; ++i) {
+        const int vl = get_int_b2(bq5_0->qs, iqs + i);
+        const int vh = get_int_b2(bq5_0->qh, 0) >> (4 * (iqs + i));
+        const int u0 = get_int_b4(bq8_1->qs, iqs + i), u1 = get_int_b4(bq8_1->qs, iqs + i + QI5_0);
+        int vi0 = (vl >> 0) & 0x0F0F0F0F;
+        vi0 |= (vh << 4) & 0x00000010;
+        vi0 |= (vh << 11) & 0x00001000;
+        vi0 |= (vh << 18) & 0x00100000;
+        vi0 |= (vh << 25) & 0x10000000;
+        sumi = ggml_cuda_dp4a((int) __vsubss4(vi0, 0x10101010), u0, sumi);
+        int vi1 = (vl >> 4) & 0x0F0F0F0F;
+        vi1 |= (vh >> 12) & 0x00000010;
+        vi1 |= (vh >> 5) & 0x00001000;
+        vi1 |= (vh << 2) & 0x00100000;
+        vi1 |= (vh << 9) & 0x10000000;
+        sumi = ggml_cuda_dp4a((int) __vsubss4(vi1, 0x10101010), u1, sumi);
+    }
+    return sumi * (__half2float(bq5_0->d) * __low2float(bq8_1->ds));
+}
+
 // Q6_K gate/up (UD-Q5_K_XL, UD-Q6_K_XL), VDR_Q6_K_Q8_1_MMVQ = 1
 __device__ __forceinline__ float vec_dot_q6_K_q8_1(const void* __restrict__ vbq, const block_q8_1* __restrict__ bq8_1,
                                                    const int& kbx, const int& iqs) {
@@ -875,6 +904,8 @@ template<> struct Fmt<12> { static constexpr int qk = 256, ipb = QI4_K / 2, step
     __device__ static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_q4_K_q8_1(v, y, kbx, iqs); } };
 template<> struct Fmt<13> { static constexpr int qk = 256, ipb = QI5_K / 2, step = 2;
     __device__ static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_q5_K_q8_1(v, y, kbx, iqs); } };
+template<> struct Fmt<6> { static constexpr int qk = 32, ipb = QI5_0 / VDR_Q5_0, step = VDR_Q5_0;
+    __device__ static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_q5_0_q8_1(v, y, kbx, iqs); } };
 template<> struct Fmt<7> { static constexpr int qk = 32, ipb = QI5_1 / VDR_Q5_1, step = VDR_Q5_1;
     __device__ static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_q5_1_q8_1(v, y, kbx, iqs); } };
 template<> struct Fmt<8> { static constexpr int qk = 32, ipb = QI8_0 / VDR_Q8_0, step = VDR_Q8_0;
@@ -896,7 +927,7 @@ LAMINA_TQP_FMT(149)
 
 // Every format above, for the dispatch switches: X(type) once per Fmt<type>.
 #define LAMINA_TQP_FMTS(X) X(147) X(148) X(149)
-#define LAMINA_FMTS(X) X(7) X(8) X(12) X(13) X(14) X(16) X(17) X(18) X(19) X(20) X(21) X(22) X(23) X(29) X(42) LAMINA_TQP_FMTS(X)
+#define LAMINA_FMTS(X) X(6) X(7) X(8) X(12) X(13) X(14) X(16) X(17) X(18) X(19) X(20) X(21) X(22) X(23) X(29) X(42) LAMINA_TQP_FMTS(X)
 
 inline int fmt_qk(int t) {
     switch (t) {

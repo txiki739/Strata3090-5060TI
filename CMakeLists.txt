@@ -491,7 +491,7 @@ if(LAMINA_NATIVE_EXPERTS)
       set(_lamina_quantize_cu ${_lamina_tq_dir}/quantize.cu)   # it includes mmq.cuh
     endif()
     add_library(lamina_mmq STATIC src/prefill/moe_mmq.cu src/prefill/ggml_cuda_host.cu ${_lamina_quantize_cu})
-    foreach(_t q2_0 iq1_s iq2_xxs iq2_xs iq2_s iq3_xxs iq3_s iq4_nl iq4_xs q4_k q5_k q6_k q5_1 q8_0)
+    foreach(_t q2_0 iq1_s iq2_xxs iq2_xs iq2_s iq3_xxs iq3_s iq4_nl iq4_xs q4_k q5_k q6_k q5_0 q5_1 q8_0)
       target_sources(lamina_mmq PRIVATE ${_lamina_mmq}/template-instances/mmq-instance-${_t}.cu)
     endforeach()
     if(LAMINA_TQ_OVERLAY_OK)
@@ -504,7 +504,7 @@ if(LAMINA_NATIVE_EXPERTS)
     # MMQ with a pointer per expert (src/prefill/moe_mmq_tab.cuh, upstream's copy of mmq.cuh's scheduler): the prompt
     # experts read in place.  The copy mirrors mmq.cuh from mul_mat_q_process_tile through mul_mat_q_case; another
     # llama.cpp tree (another fingerprint of that text) leaves it out, and the experts are gathered as before.  The
-    # gate/up and down types of ISTA-DASLab's IQ3_S and unsloth's UD-Q4_K_XL files, one TU each.
+    # gate/up and down types of ISTA-DASLab's IQ3_S and unsloth's files, one TU each.
     file(READ ${_lamina_mmq}/mmq.cuh _lamina_mmq_src)
     string(REPLACE "\r\n" "\n" _lamina_mmq_src "${_lamina_mmq_src}")
     string(FIND "${_lamina_mmq_src}" "static __device__ __forceinline__ void mul_mat_q_process_tile" _lamina_tab_a)
@@ -519,7 +519,7 @@ if(LAMINA_NATIVE_EXPERTS)
     unset(_lamina_tab_region)
     if(_lamina_tab_hash STREQUAL "36e4dc716c504470ec09cc0852d29a6ac5eace257f6e5e72db3805ca4f043eb0")   # 3cf03257
       set(_lamina_tab_cuh ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/moe_mmq_tab.cuh)
-      set(_lamina_tab_types iq2_s iq3_xxs iq3_s iq4_xs q4_k q5_k q2_0 iq4_nl q5_1 q8_0)
+      set(_lamina_tab_types iq2_s iq3_xxs iq3_s iq4_xs q4_k q5_k q2_0 iq4_nl q5_0 q5_1 q8_0)
       if(LAMINA_TQ_OVERLAY_OK)
         list(APPEND _lamina_tab_types tqp5 tqp6 tqp7)
       endif()
@@ -559,6 +559,7 @@ if(LAMINA_NATIVE_EXPERTS)
     target_include_directories(native_expert_parity PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
     target_link_libraries(native_expert_parity PRIVATE lamina_engine lamina_kernels lamina_kernels_cpu lamina_artifact CUDA::cudart)
     add_test(NAME native_expert_parity_k_quants COMMAND native_expert_parity --synthetic q4_K/q5_1 q5_K/q8_0)
+    add_test(NAME native_expert_parity_q5_0 COMMAND native_expert_parity --synthetic iq4_xs/q5_0 iq3_xxs/q5_0 iq2_s/q5_0)
     add_test(NAME native_expert_parity_trellis COMMAND native_expert_parity --synthetic tqp5/tqp5 tqp6/tqp6 tqp7/tqp7)
     # --expert-math exact's expf: the CPU pool's (lamina_kernels_cpu) against the GPU's, over every float
     add_executable(swiglu_expf_parity src/kernels/swiglu_expf_parity.cu)

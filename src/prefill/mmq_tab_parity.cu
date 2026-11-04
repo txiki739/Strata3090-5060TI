@@ -1,7 +1,7 @@
 // mmq_tab_parity - the prompt experts' products read in place (mmq::Product::tab: each expert's matrix where its blob
 // lies) byte for byte against the gathered products they replace (the experts copied `expert_bytes` apart, a zeroed
 // 4096-byte tail after the last), for the configs' files' gate/up types (IQ2_S IQ3_XXS IQ3_S IQ4_XS Q4_K Q5_K) at
-// their shape [1280, 2560] and down types (Q2_0 IQ4_NL Q5_1 Q8_0) at [2560, 640].  In place the matrices lie at
+// their shape [1280, 2560] and down types (Q2_0 IQ4_NL Q5_0 Q5_1 Q8_0) at [2560, 640].  In place the matrices lie at
 // scattered 256-byte-aligned addresses of an arena filled with an fp16 NaN pattern (0xFF 0x7C), each followed by the
 // tab_overread bytes the k loop reads past it, zeroed by zero_after, then by the pattern: a read further past a matrix
 // would put a non-finite value into the output.  Groups of 1-16 experts with mixed row counts (0 to 1,000), and
@@ -171,8 +171,10 @@ int main() {
         static const int kMax[] = {1, 7, 8, 9, 16, 17, 24, 25, 32, 33, 40, 41, 48, 56, 64, 65, 72, 80, 88, 96, 100,
                                    104, 112, 120, 128, 129, 200, 256, 512, 1000};
         for (const ggml_type t : {GGML_TYPE_IQ2_S, GGML_TYPE_IQ3_XXS, GGML_TYPE_IQ3_S, GGML_TYPE_IQ4_XS, GGML_TYPE_Q4_K,
-                                  GGML_TYPE_Q5_K, GGML_TYPE_Q2_0, GGML_TYPE_IQ4_NL, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0}) {
-            const bool down = t == GGML_TYPE_Q2_0 || t == GGML_TYPE_IQ4_NL || t == GGML_TYPE_Q5_1 || t == GGML_TYPE_Q8_0;
+                                  GGML_TYPE_Q5_K, GGML_TYPE_Q2_0, GGML_TYPE_IQ4_NL, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1,
+                                  GGML_TYPE_Q8_0}) {
+            const bool down = t == GGML_TYPE_Q2_0 || t == GGML_TYPE_IQ4_NL || t == GGML_TYPE_Q5_0 || t == GGML_TYPE_Q5_1 ||
+                              t == GGML_TYPE_Q8_0;
             const int64_t ROWS = down ? 2560 : 1280, COLS = down ? 640 : 2560;
             if (!mmq::tab_takes((int) t, ROWS, COLS)) {
                 std::printf("FAIL %s: no pointer-table product in this build\n", ggml_type_name(t));

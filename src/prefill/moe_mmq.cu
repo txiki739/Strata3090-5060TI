@@ -223,6 +223,7 @@ bool supported(int t) {
         case GGML_TYPE_IQ2_S: case GGML_TYPE_IQ3_XXS: case GGML_TYPE_IQ3_S: case GGML_TYPE_IQ4_NL:
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q6_K: case GGML_TYPE_Q5_1:   // unsloth's files
+        case GGML_TYPE_Q5_0:
         case GGML_TYPE_Q8_0:
 #if defined(LAMINA_MMQ_TQP)
         case GGML_TYPE_TQP5: case GGML_TYPE_TQP6: case GGML_TYPE_TQP7:   // Gyro-L (cmake/lamina_ggml_tq_overlay.cmake)
@@ -320,6 +321,7 @@ bool run_tab(ggml_backend_cuda_context* ctx, ggml_type t, const mmq_args& a, con
         LAMINA_TAB_CASE(GGML_TYPE_Q5_K);
         LAMINA_TAB_CASE(GGML_TYPE_Q2_0);
         LAMINA_TAB_CASE(GGML_TYPE_IQ4_NL);
+        LAMINA_TAB_CASE(GGML_TYPE_Q5_0);
         LAMINA_TAB_CASE(GGML_TYPE_Q5_1);
         LAMINA_TAB_CASE(GGML_TYPE_Q8_0);
 #if defined(LAMINA_MMQ_TQP)
@@ -420,6 +422,7 @@ void Context::run(const Product& p, void* stream) {
         case GGML_TYPE_Q4_K: mul_mat_q_case<GGML_TYPE_Q4_K>(ctx, a, s); break;
         case GGML_TYPE_Q5_K: mul_mat_q_case<GGML_TYPE_Q5_K>(ctx, a, s); break;
         case GGML_TYPE_Q6_K: mul_mat_q_case<GGML_TYPE_Q6_K>(ctx, a, s); break;
+        case GGML_TYPE_Q5_0: mul_mat_q_case<GGML_TYPE_Q5_0>(ctx, a, s); break;
         case GGML_TYPE_Q5_1: mul_mat_q_case<GGML_TYPE_Q5_1>(ctx, a, s); break;
 #if defined(LAMINA_MMQ_TQP)
         case GGML_TYPE_TQP5: mul_mat_q_case<GGML_TYPE_TQP5>(ctx, a, s); break;
@@ -460,6 +463,7 @@ void Context::run_dense(const void* w, int type, int64_t rows, int64_t cols, con
         case GGML_TYPE_Q4_K: mul_mat_q_case<GGML_TYPE_Q4_K>(ctx, a, s); break;
         case GGML_TYPE_Q5_K: mul_mat_q_case<GGML_TYPE_Q5_K>(ctx, a, s); break;
         case GGML_TYPE_Q6_K: mul_mat_q_case<GGML_TYPE_Q6_K>(ctx, a, s); break;
+        case GGML_TYPE_Q5_0: mul_mat_q_case<GGML_TYPE_Q5_0>(ctx, a, s); break;
         case GGML_TYPE_Q5_1: mul_mat_q_case<GGML_TYPE_Q5_1>(ctx, a, s); break;
         default:
             std::fprintf(stderr, "prefill mmq: type %d is not covered\n", (int) t);
