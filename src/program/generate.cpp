@@ -101,7 +101,7 @@ struct Options {
     std::vector<int64_t> tokens;      // the prompt, PRE-TOKENIZED
     int64_t max_new = 16;
     int64_t max_context = 4096;
-    std::string ple_gguf;              // the model shard holding the PLE table (default: found among --native's)
+    std::string ple_gguf;              // the GGUF holding the PLE table (default: found among --native's)
     /// rope scaling past the trained 262K (upstream main's knobs, through the CLI: the model files carry no
     /// rope.scaling keys).  A process constant, resolved before session_init and any graph capture.
     std::string rope_scaling;         ///< --rope-scaling none|linear|yarn
@@ -119,7 +119,6 @@ struct Options {
     /// the head, the token embedding and the PLE table come from it, the float tensors from the pack computed
     /// from it at load
     std::string native_preset;
-    std::vector<std::string> native_dense_gguf;   ///< its shards, and the PLE table's (set from it)
     /// Plan v0.3 P2: how the n-gram table is read. Direct (default) = unbuffered SSD reads, table never in RAM.
     std::string ple_io = "direct";
     std::string kv = "fp16";           ///< plan v0.3 P7: KV storage, fp16 (default) or int8 (half the VRAM)
@@ -288,11 +287,12 @@ void usage() {
                  "\n"
                  "  --tokens LIST       the prompt as comma-separated token IDS (required)\n"
                  "  --tokens-file PATH   pretokenized prompt, commas or whitespace (alternative to --tokens)\n"
-                 "  --ple-gguf PATH      the PLE table: the model shard holding per_layer_token_embd (with --native,\n"
-                 "                       the --native model's shard that holds it by default)\n"
+                 "  --ple-gguf PATH      the PLE table: a GGUF holding per_layer_token_embd, such as one of unsloth's\n"
+                 "                       engram tables (default: the --native model's shard that holds it)\n"
                  "  --ple-io direct|mmap|ram  n-gram table reads. direct (default): unbuffered SSD\n"
                  "                       reads, the table never enters RAM or the file cache; mmap: A/B arm; ram:\n"
-                 "                       read into RAM once the experts are loaded (28.8 GB), direct reads until then\n"
+                 "                       read into RAM once the experts are loaded (the table's size: 28.8 GB as\n"
+                 "                       IQ4_NL), direct reads until then\n"
                  "  --kv fp16|int8|k8v4|q4_0  KV storage: int8 codes + fp16 scale per 64 values (half FP16's VRAM);\n"
                  "                       k8v4: int8 K, 4-bit V of rotated rows (23%% less than int8); q4_0: 4-bit K\n"
                  "                       and V (45%% less; native packs only for both); default fp16. Qwen3.6-35B-A3B\n"
@@ -1381,9 +1381,6 @@ int lamina::program::run(int argc, char** argv) {
                                  "name the file with --ple-gguf\n");
             return 2;
         }
-        o.native_dense_gguf = native_shards;
-        if (std::find(native_shards.begin(), native_shards.end(), o.ple_gguf) == native_shards.end())
-            o.native_dense_gguf.push_back(o.ple_gguf);
     }
     // P7 audit: positions, cells and pooled-block indices are cast to int32 on the device path.
     if (o.max_context > 2147483647LL - 8) {
@@ -1484,7 +1481,7 @@ int lamina::program::run(int argc, char** argv) {
     // the tensors served in their GGUF form are not loaded from the pack
     std::set<std::string> skip;
     {
-        if (!lamina::core::NativeDense::served_names(o.native_dense_gguf, true, skip, err)) {
+        if (!lamina::core::NativeDense::served_names(native_shards, true, skip, err)) {
             std::fprintf(stderr, "lamina: %s\n", err.c_str());
             return 1;
         }
@@ -1520,7 +1517,7 @@ int lamina::program::run(int argc, char** argv) {
 
     lamina::core::NativeDense native_dense;
     {
-        if (!native_dense.load(o.native_dense_gguf, wt, err, true)) {
+        if (!native_dense.load(native_shards, wt, err, true)) {
             std::fprintf(stderr, "lamina: native dense projections: %s\n", err.c_str());
             return 1;
         }
