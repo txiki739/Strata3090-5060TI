@@ -121,7 +121,6 @@ public:
     // what the last request left (read by its own thread after generate returns)
     json last = json::object();            ///< the DONE line's figures (and its LP / TIERS notes)
     std::atomic<uint64_t> dones{0};
-    json info = json::object();            ///< INFO key=value facts (the Monitor)
     std::optional<Held> held;              ///< after a text request that ended with DONE
     std::vector<int32_t> drained;          ///< the tokens the engine sent after a STOP (it holds them)
     /// the running request's prompt progress, from its PP and RESUME lines: its thread writes it while HTTP threads
@@ -141,6 +140,15 @@ public:
         std::lock_guard<std::mutex> lk(progress_mu_);
         f(progress_);
     }
+    /// the INFO key=value facts (the Monitor), a copy: a start and the replicas write them while HTTP threads read
+    json info() const {
+        std::lock_guard<std::mutex> lk(info_mu_);
+        return info_;
+    }
+    void set_info(json v) {
+        std::lock_guard<std::mutex> lk(info_mu_);
+        info_ = std::move(v);
+    }
     double silence_s = 300.0;              ///< the config's engine_silence_s (0: wait for ever)
     std::string model_path;
     bool can_stop = true;
@@ -153,6 +161,8 @@ protected:
 private:
     mutable std::mutex progress_mu_;
     Progress progress_;
+    mutable std::mutex info_mu_;
+    json info_ = json::object();
 };
 
 /// how a LaminaEngine runs: on a thread of this process (the default), or as a `lamina --serve` child of its own

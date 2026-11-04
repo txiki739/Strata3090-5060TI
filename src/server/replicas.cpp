@@ -22,6 +22,7 @@ constexpr size_t kIndexMax = 262144;     // block hashes kept (about 17M tokens 
 constexpr double kHealCooldownS = 60.0;  // a replica that died is started again at most this often
 
 thread_local LaminaEngine* tl_current = nullptr;   // the replica this thread's request runs on
+thread_local uint64_t tl_replica_dones = 0;        // the DONEs this thread's requests read, on whichever replica
 
 std::vector<int> cards(const json& g) {
     std::vector<std::string> items;
@@ -244,9 +245,10 @@ ReplicaEngine::ReplicaEngine(std::vector<std::shared_ptr<LaminaEngine>> engines,
 }
 
 void ReplicaEngine::refresh_info() {
-    info = engines_[0]->info;
-    info["replicas"] = engines_.size();
-    info["replicas_alive"] = std::count_if(engines_.begin(), engines_.end(), [](const auto& e) { return e->alive(); });
+    json i = engines_[0]->info();
+    i["replicas"] = engines_.size();
+    i["replicas_alive"] = std::count_if(engines_.begin(), engines_.end(), [](const auto& e) { return e->alive(); });
+    set_info(std::move(i));
 }
 
 bool ReplicaEngine::alive() {
@@ -293,7 +295,7 @@ std::string ReplicaEngine::death_note() {
 }
 
 json ReplicaEngine::last_figures() const { return tl_current != nullptr ? tl_current->last_figures() : engines_[0]->last_figures(); }
-uint64_t ReplicaEngine::done_count() const { return tl_current != nullptr ? tl_current->done_count() : 0; }
+uint64_t ReplicaEngine::done_count() const { return tl_replica_dones; }
 std::vector<int32_t> ReplicaEngine::drained_tokens() const {
     return tl_current != nullptr ? tl_current->drained_tokens() : std::vector<int32_t>{};
 }
@@ -451,9 +453,12 @@ void ReplicaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, c
     if (k < 0) throw EngineDied("no replica is running; this request was not sent");
     LaminaEngine& e = *engines_[(size_t) k];
     tl_current = &e;
+    uint64_t dones_before = 0;   // read once the replica runs this request alone, or counts this thread's DONEs
+    bool counting = false;
     std::vector<int32_t> produced;
     bool locked = false, nonfinite = false;
     auto finish = [&] {
+        if (counting) tl_replica_dones += e.done_count() - dones_before;
         if (locked) run_locks_[(size_t) k]->unlock();
         {
             std::lock_guard<std::mutex> lk(mu_);
@@ -480,6 +485,8 @@ void ReplicaEngine::generate(const std::vector<int32_t>& ids, int64_t max_new, c
                 }
             locked = true;
         }
+        dones_before = e.done_count();
+        counting = true;
         e.generate(ids, max_new, sampling, cancel, embeddings, [&](int32_t t) {
             produced.push_back(t);
             return on_token(t);

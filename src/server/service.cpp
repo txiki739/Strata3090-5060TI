@@ -950,7 +950,8 @@ json Service::metrics(bool all_requests) {
     if (const json rv = engine->replica_view(); !rv.is_null()) live["replicas"] = rv;   // each replica's state
     if (const json cv = engine->cache_view(); !cv.is_null()) live["cache"] = cv;   // the Conversation cache card
     json eng = {{"model", model}, {"max_context", reported_ctx()}, {"images", vision != nullptr}};
-    for (auto it = engine->info.begin(); it != engine->info.end(); ++it) eng[it.key()] = it.value();
+    const json facts = engine->info();
+    for (auto it = facts.begin(); it != facts.end(); ++it) eng[it.key()] = it.value();
     const json tel = telemetry != nullptr ? telemetry->snapshot()
                                           : json{{"now", json::object()}, {"history", json::object()}, {"static", json::object()}};
     size_t kept;
@@ -1044,7 +1045,7 @@ json Service::v1_status() {
     return {{"service", "lamina"}, {"model", model}, {"loaded", loaded()}, {"auto_load", engine->auto_load()},
             {"structured_output", {{"formats", {"json_object", "json_schema"}}, {"method", "prompt_and_validate"},
                                    {"constrained_decoding", false}, {"stream_buffered", true}}},
-            {"engine", jget(engine->info, "version")}, {"started", (int64_t) started_at},
+            {"engine", jget(engine->info(), "version")}, {"started", (int64_t) started_at},
             {"uptime_s", (int64_t) (now_s() - started_at)}, {"cache_max_tokens", ctx},
             {"context", {{"native", ctx}, {"max_positions", ctx}}},
             {"concurrency", {{"serving", serving}, {"requested", requested_slots > 0 ? requested_slots : (int64_t) serving}}},

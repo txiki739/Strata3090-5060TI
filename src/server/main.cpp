@@ -465,7 +465,7 @@ int run(int argc, char** argv) {
                 le->silence_s = silence;
                 engine = le;
             }
-            warn_tight_ram(jget(engine->info, "arena_mib"));
+            warn_tight_ram(jget(engine->info(), "arena_mib"));
         } else {
             std::vector<std::string> scripts = a.scripts;
             if (scripts.empty()) scripts.push_back("Thinking about it.</think>\n\nHello from the mock engine.");

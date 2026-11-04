@@ -145,7 +145,7 @@ json normalize_bias(const json& value, int64_t vocab) {
 
 void validate_bias(const json& req, const Engine& engine, int64_t vocab) {
     if (normalize_bias(jget(req, "logit_bias"), vocab).empty()) return;
-    if (jget(engine.info, "logit_bias") != 1)
+    if (jget(engine.info(), "logit_bias") != 1)
         throw RequestError("logit_bias: this engine does not support token biases; use a supporting CUDA/HIP build");
     if (engine.batch()) throw RequestError("logit_bias: continuous batching is not supported; run without --batch");
 }
@@ -586,7 +586,7 @@ void get_props(Exchange& x) {
                   {"modalities", {{"vision", svc.vision != nullptr}}}, {"models_autoload", svc.engine->auto_load()},
                   {"is_sleeping", !svc.loaded()}};
     if (!svc.engine->model_path.empty()) props["model_path"] = svc.engine->model_path;
-    const json& version = jget(svc.engine->info, "version");
+    const json version = jget(svc.engine->info(), "version");
     if (truthy(version)) props["build_info"] = "Lamina " + py_str(version);
     x.reply(200, props);
 }

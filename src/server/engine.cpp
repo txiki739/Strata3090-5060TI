@@ -139,6 +139,7 @@ void LaminaEngine::start() {
     const auto t0 = Clock::now();
     std::string line;
     bool timed_out = false;
+    json info = json::object();   // this start's INFO facts
     while (true) {
         double left = ready_timeout_s > 0 ? ready_timeout_s - since(t0) : -1;
         if (ready_timeout_s > 0 && left <= 0) {
@@ -184,6 +185,7 @@ void LaminaEngine::start() {
     known_ctx_ = max_context_;
     if (info.contains("engine")) info["version"] = info["engine"].is_string() ? info["engine"] : json(py_dumps(info["engine"]));
     batch_ = info.contains("batch_slots") && info["batch_slots"].is_number_integer() ? info["batch_slots"].get<int>() : 0;
+    set_info(std::move(info));
     for (size_t i = 0; i + 1 < args_.size(); ++i)
         if ((args_[i] == "--batch" || args_[i] == "--slots") && std::atoi(args_[i + 1].c_str()) != batch_)
             say("[lamina] parallel requests: " + args_[i + 1] + " asked, the engine runs " +

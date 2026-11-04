@@ -493,7 +493,7 @@ bool LaminaEngine::may_go_solo(int64_t left, int times, const std::string& embed
     // a request decoding in a slot that is alone now goes back to the solo path with its MTP drafts (the engine continues
     // it from the slot's sessions: INFO slot_cache=1); LAMINA_PARALLEL_SOLO=0 keeps it in the slot
     const char* off = std::getenv("LAMINA_PARALLEL_SOLO");
-    if (!embeddings.empty() || times >= kSoloAgainMax || left < kSoloAgainMinLeft || !truthy(jget(info, "slot_cache")) ||
+    if (!embeddings.empty() || times >= kSoloAgainMax || left < kSoloAgainMinLeft || !truthy(jget(info(), "slot_cache")) ||
         (off != nullptr && std::string(off) == "0"))
         return false;
     std::lock_guard<std::mutex> lk(slot_mu_);
