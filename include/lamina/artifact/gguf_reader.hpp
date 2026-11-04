@@ -828,8 +828,9 @@ inline std::string read_geometry(const GgufFile& f, core::ModelGeometry& g) {
 }
 
 /// Returns "" when the compiled kernels can run `g`, else the first metadata key whose value they are not
-/// compiled for.  Only the expert count and the experts per token are free (the router and the expert paths
-/// take them at run time); the vocabulary is free because the head and the embedding take their tensors' shapes.
+/// compiled for.  Only the expert count is free (the router and the expert paths take it at run time); the experts
+/// per token are pinned, the engine routing the compiled top-10; the vocabulary is free because the head and the
+/// embedding take their tensors' shapes.
 inline std::string geometry_unsupported(const core::ModelGeometry& g) {
     const core::ModelGeometry& c = core::kCompiledGeometry;
     struct Pin {
@@ -856,6 +857,7 @@ inline std::string geometry_unsupported(const core::ModelGeometry& g) {
         {"hyper_connection.count", &core::ModelGeometry::hc},
         {"hyper_connection.low_rank", &core::ModelGeometry::hc_lr},
         {"expert_feed_forward_length", &core::ModelGeometry::n_ff},
+        {"expert_used_count", &core::ModelGeometry::n_expert_used},
     };
     for (const Pin& pin : pins)
         if (g.*pin.field != c.*pin.field)
