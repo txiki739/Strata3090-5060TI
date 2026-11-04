@@ -87,6 +87,18 @@ ChatTemplate::ChatTemplate(std::string source) : source_(std::move(source)) {
 
 ChatTemplate::~ChatTemplate() = default;
 
+namespace {
+/// the message of the template's raise_exception() in a runtime error's text, or "" for any other error: the runtime
+/// (vendor/jinja/value.cpp) throws it as "Jinja Exception: <message>", and each statement wraps it after its place in
+/// the source ("... Error: Jinja Exception: <message>")
+std::string refusal_of(const std::string& what) {
+    static const std::string kMark = "Jinja Exception: ";
+    const size_t at = what.rfind(kMark);
+    if (at == std::string::npos || (at != 0 && what.compare(at - 2, 2, ": ") != 0)) return "";
+    return what.substr(at + kMark.size());
+}
+}  // namespace
+
 std::string ChatTemplate::render(const json& messages, const json& tools, bool add_generation_prompt,
                                  const json& kwargs) const {
     // completed empty assistant turns are no examples for the next reply; the final message stays (#843;
@@ -111,8 +123,12 @@ std::string ChatTemplate::render(const json& messages, const json& tools, bool a
         jinja::runtime rt(ctx);
         const jinja::value results = rt.execute(*prog_);
         return jinja::runtime::gather_string_parts(results)->as_string().str();
-    } catch (const jinja::raised_exception& e) {
-        throw TemplateRequestError(e.message);
+    } catch (const std::exception& e) {
+        // the template refused the request (raise_exception, e.g. "No messages provided."): a 400 with its message;
+        // any other error is the template's own (the server's 500)
+        const std::string refusal = refusal_of(e.what());
+        if (refusal.empty()) throw;
+        throw TemplateRequestError(refusal);
     }
 }
 

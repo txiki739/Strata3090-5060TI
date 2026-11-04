@@ -173,6 +173,13 @@ public:
         path = req.path;
         while (!path.empty() && path.back() == '/') path.pop_back();
     }
+    /// every way out, an exception past do_post's handlers too: what the request held is given back
+    ~Exchange() {
+        try {
+            finish();
+        } catch (...) {
+        }
+    }
 
     Service& svc;
     HttpServer& server;
@@ -180,8 +187,8 @@ public:
     httplib::Response& res;
     std::string path;
     std::shared_ptr<json> record;          // #332: this request's monitor record, when the monitor is on
+    std::shared_ptr<Cancel> cancel;        // (before watch: its thread reads it until watch is gone)
     std::shared_ptr<Watch> watch;          // #430 #431: cancels the request when its client hangs up
-    std::shared_ptr<Cancel> cancel;
     bool reserved = false, streaming = false, finished = false;
 
     std::string header(const char* name) const { return req.get_header_value(name); }

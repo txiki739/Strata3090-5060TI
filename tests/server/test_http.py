@@ -477,6 +477,20 @@ class MalformedCall(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
+class TemplateRefusal(unittest.TestCase):
+    """The template's raise_exception is a 400 with its message, and the request gives its admission back."""
+
+    def test_a_400_that_frees_its_admission(self):
+        port, proc, log = mock_server(self, "--max-queue", "0", "--script", "</think>\n\nFine.")
+        wait_ready(port, proc, "lamina-server", log)
+        for _ in range(2):
+            status, ctype, raw = call(port, "POST", "/v1/chat/completions", {"model": "m", "messages": []}, {})
+            self.assertEqual((status, parse_body(ctype, raw)["error"]["message"]), (400, "No messages provided."), raw)
+        status, ctype, raw = call(port, "POST", "/v1/chat/completions", chat(), {})
+        self.assertEqual((status, parse_body(ctype, raw)["choices"][0]["message"]["content"]), (200, "Fine."), raw)
+
+
+@unittest.skipUnless(os.environ.get("LAMINA_TEST_GGUF"), "LAMINA_TEST_GGUF names no model file")
 class HttpGolden(unittest.TestCase):
     def test_answers(self):
         want = json.loads(GOLDEN.read_text(encoding="utf-8"))
