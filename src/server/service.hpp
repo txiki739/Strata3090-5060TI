@@ -64,7 +64,7 @@ public:
     json reasoning_budget_tokens = 0;      ///< the config's default thinking budget (0: none)
     int64_t repeat_stop_tokens = 256;
     std::string model_arch;                ///< the family ("qwen4exp", "qwen35moe", "qwen35"): the model card's sampling
-    json sampling_defaults = json::object(), shared = json::object();
+    json sampling_defaults = json::object();
     std::string shared_path, config_path, config_effort;
     std::vector<std::string> cors_origins, trusted_origins, allowed_hosts;
     json api_key = "";                     ///< a key ("k1,k2": several) or a list of keys; "" none
@@ -137,7 +137,10 @@ public:
     std::string unload(std::optional<double> idle_for = std::nullopt);
     std::string unload_waiting(double wait_s);
     void start_idle_unload();
-    json set_shared(const json& defaults);
+    /// the Chat settings shared with apps, a copy: POST /settings replaces them while requests read them
+    json shared() const;
+    /// `save`: into shared_path (the start reads them from there)
+    json set_shared(const json& defaults, bool save = true);
     std::string effort_default() const;
     json with_shared(const json& req, const std::string& api) const;
     double tok_s();
@@ -192,6 +195,8 @@ private:
     std::map<const json*, std::pair<json*, std::deque<std::pair<double, int64_t>>*>> live_reqs_;
     std::thread idle_thread_;
     std::atomic<bool> stopping_{false};
+    mutable std::mutex shared_mu_;
+    json shared_ = json::object();
 };
 
 // ---- helpers (module functions of serve/server.py)

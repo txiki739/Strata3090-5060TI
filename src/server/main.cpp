@@ -628,11 +628,11 @@ int run(int argc, char** argv) {
             std::ifstream f(u8_path(svc.shared_path), std::ios::binary);
             json saved;
             if (f && py_loads(std::string(std::istreambuf_iterator<char>(f), {}), saved)) {
-                svc.shared = clean_shared_defaults(saved);
-                if (!svc.shared.empty()) say("[lamina] other apps use the Chat settings: " + items(svc.shared));
+                const json shared = svc.set_shared(saved, false);
+                if (!shared.empty()) say("[lamina] other apps use the Chat settings: " + items(shared));
             }
         } catch (const std::exception&) {
-            svc.shared = json::object();
+            svc.set_shared(json::object(), false);
         }
     }
     if (hub != nullptr) {

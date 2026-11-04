@@ -559,7 +559,8 @@ void get_props(Exchange& x) {
     }
     json defaults = model_card_sampling(svc.model_arch, true);
     for (auto it = svc.sampling_defaults.begin(); it != svc.sampling_defaults.end(); ++it) defaults[it.key()] = it.value();
-    for (auto it = svc.shared.begin(); it != svc.shared.end(); ++it) defaults[it.key()] = it.value();
+    const json shared = svc.shared();
+    for (auto it = shared.begin(); it != shared.end(); ++it) defaults[it.key()] = it.value();
     json params = json::object();
     for (auto it = defaults.begin(); it != defaults.end(); ++it) {
         static const std::set<std::string> keep = {"temperature", "top_p", "top_k", "min_p", "seed", "repetition_penalty",
@@ -568,7 +569,7 @@ void get_props(Exchange& x) {
         const std::string k = it.key() == "repetition_penalty" ? "repeat_penalty" : it.key() == "penalty_last_n" ? "repeat_last_n" : it.key();
         params[k] = it.value();
     }
-    params["n_predict"] = svc.shared.contains("max_tokens") ? svc.shared["max_tokens"] : json(-1);
+    params["n_predict"] = shared.contains("max_tokens") ? shared["max_tokens"] : json(-1);
     json props = {{"default_generation_settings", {{"n_ctx", svc.reported_ctx()}, {"params", params}}},
                   {"total_slots", std::max(1, svc.engine->batch())},   // #1004: the batch slots
                   {"model_alias", svc.model}, {"chat_template", svc.tpl->source()}, {"chat_template_caps", svc.tpl->caps()},
@@ -715,7 +716,10 @@ void do_get(Service& svc, HttpServer& server, const httplib::Request& req, httpl
         return;
     }
     if (path == "/settings") {
-        if (x.authorized()) x.reply(200, {{"shared", truthy(svc.shared)}, {"defaults", svc.shared}});
+        if (x.authorized()) {
+            const json shared = svc.shared();
+            x.reply(200, {{"shared", truthy(shared)}, {"defaults", shared}});
+        }
         return;
     }
     if (path == "/config") {   // #564: the Settings view's keys of the run config
@@ -1276,8 +1280,8 @@ void post_responses(std::shared_ptr<Exchange> xp, json req) {
             for (const auto& s : fresh) list += (list.empty() ? "" : ", ") + s;
             say("[lamina] /v1/responses: left out the hosted tools " + list + " (this server cannot run them)");
         }
-        if (jget(req, "max_output_tokens").is_null() && svc.shared.contains("max_tokens"))   // the shared Chat settings
-            req["max_output_tokens"] = svc.shared["max_tokens"];
+        if (const json shared = svc.shared(); jget(req, "max_output_tokens").is_null() && shared.contains("max_tokens"))
+            req["max_output_tokens"] = shared["max_tokens"];   // the shared Chat settings
         try {
             svc.reasoning_budget(req);
         } catch (const std::invalid_argument& e) {

@@ -737,10 +737,19 @@ void Service::start_idle_unload() {
     });
 }
 
-json Service::set_shared(const json& defaults) {
+json Service::shared() const {
+    std::lock_guard<std::mutex> lk(shared_mu_);
+    return shared_;
+}
+
+json Service::set_shared(const json& defaults, bool save) {
     // the Chat settings every client gets for what it leaves out; {} / null: clients use their own again
-    shared = clean_shared_defaults(defaults);
-    if (!shared_path.empty()) {
+    const json shared = clean_shared_defaults(defaults);
+    {
+        std::lock_guard<std::mutex> lk(shared_mu_);
+        shared_ = shared;
+    }
+    if (save && !shared_path.empty()) {
         try {
             if (!shared.empty()) {
                 std::ofstream f(shared_path, std::ios::binary);
@@ -757,12 +766,13 @@ json Service::set_shared(const json& defaults) {
 
 std::string Service::effort_default() const {
     // the thinking level of a request that names none: the shared Chat settings, then the config's (#1641)
-    const std::string s = jstr(shared, "reasoning_effort");
+    const std::string s = jstr(shared(), "reasoning_effort");
     return !s.empty() ? s : config_effort;
 }
 
 json Service::with_shared(const json& req0, const std::string& api) const {
     const std::string effort = effort_default();
+    const json shared = this->shared();
     if (shared.empty() && effort.empty()) return req0;
     json req = req0;
     if (shared.contains("max_tokens") && !truthy(jget(req, "max_tokens")) && !truthy(jget(req, "max_completion_tokens")))
