@@ -96,6 +96,25 @@ int main(int argc, char** argv) {
         // double softplus and double multiply on both sides, then one cast
         if (!(rel <= 1e-6)) { std::printf("    *** over 1e-6 ***\n"); ++bad; }
 
+        // two tokens of the same alpha: the second token's heads are computed too, the same as the first's
+        {
+            float *d_a2 = nullptr, *d_g2 = nullptr;
+            check(cudaMalloc(&d_a2, 2 * n * 4), "a2");
+            check(cudaMalloc(&d_g2, 2 * n * 4), "g2");
+            check(cudaMemset(d_g2, 0, 2 * n * 4), "z2");
+            for (int t = 0; t < 2; ++t)
+                check(cudaMemcpy(d_a2 + (size_t) t * n, alpha.data(), n * 4, cudaMemcpyHostToDevice), "ca2");
+            lamina::kernels::gdn_gate(d_a2, d_dt, d_sa, d_g2, 2, H_V, nullptr);
+            std::vector<float> got2((size_t) 2 * n);
+            check(cudaMemcpy(got2.data(), d_g2, 2 * n * 4, cudaMemcpyDeviceToHost), "cg2");
+            const bool both = std::memcmp(got2.data(), got.data(), n * 4) == 0 &&
+                              std::memcmp(got2.data() + n, got.data(), n * 4) == 0;
+            std::printf("  %-44s %s\n", "gdn_gate over two tokens: both as one", both ? "yes" : "*** NO ***");
+            if (!both) ++bad;
+            cudaFree(d_a2);
+            cudaFree(d_g2);
+        }
+
         // TRAP: no large-x branch.  `log1p(exp(x))` in f32, with no `x > 20` path.
         //
         // AND THE MEASUREMENT SAYS WHERE THE BRANCH ACTUALLY MATTERS.  The first version of this fixture
