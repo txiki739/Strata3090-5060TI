@@ -142,7 +142,8 @@ bool pool_grow(ElasticPool& p, int64_t cells, const std::function<VmmChunk()>& t
     const int64_t pages = pool_pages(p, cells);
     std::vector<std::vector<int64_t>> fresh(p.off.size());
     size_t most = 0;
-    for (size_t a = 0; a < p.off.size(); ++a) {
+    bool mapped_all = true;
+    for (size_t a = 0; a < p.off.size() && mapped_all; ++a) {
         const int64_t c0 = (int64_t) (p.off[a] / G), c1 = c0 + pool_chunks(p, a, pages);
         for (int64_t c = c0; c < c1; ++c)
             if (!p.range.mapped(c)) fresh[a].push_back(c);
@@ -151,14 +152,14 @@ bool pool_grow(ElasticPool& p, int64_t cells, const std::function<VmmChunk()>& t
         if (!p.range.map_range(c0, c1, take)) {
             std::fprintf(stderr, "lamina: the elastic K/V could not map %zu chunks (the driver has no VRAM left)\n",
                          fresh[a].size());
-            return false;
+            mapped_all = false;   // what was mapped stays mapped, and a later growth skips it: cleared below too
         }
     }
     // what a chunk held before (another pool's cells, an expert) is not K/V: zeroed, as a new session is.  Or filled
     // (the rotary tables): the k-th new chunk of every array in turn, so cos's and sin's of one range follow each other
     for (size_t k = 0; k < most; ++k)
         for (size_t a = 0; a < p.off.size(); ++a) {
-            if (k >= fresh[a].size()) continue;
+            if (k >= fresh[a].size() || !p.range.mapped(fresh[a][k])) continue;
             uint8_t* dst = p.range.base() + (uint64_t) fresh[a][k] * G;
             const uint64_t lo = (uint64_t) fresh[a][k] * G - p.off[a];
             if (p.fill ? !p.fill(a, lo, lo + G, dst) : cudaMemset(dst, 0, (size_t) G) != cudaSuccess) {
@@ -167,7 +168,7 @@ bool pool_grow(ElasticPool& p, int64_t cells, const std::function<VmmChunk()>& t
                 return false;
             }
         }
-    return true;
+    return mapped_all;
 }
 }  // namespace
 
