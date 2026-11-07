@@ -178,6 +178,7 @@ private:
     std::shared_ptr<ToolCall> scall_;
     bool sfirst_ = true, sval_started_ = false;
     json sdeclared_ = json::object();
+    std::string sparam_;   ///< the parameter being streamed
 };
 
 }  // namespace lamina

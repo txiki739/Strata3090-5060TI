@@ -8,6 +8,7 @@
 #include "jinja/value.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <list>
 #include <map>
@@ -972,6 +973,26 @@ std::shared_ptr<ToolCall> json_tool_call(std::string_view body0, const json& sch
     return call;
 }
 
+/// a parameter value not declared a string: JSON; failing that, for a boolean or null declaration, the Python
+/// spellings the model sometimes writes (True/False/None, any case), as vLLM's and llama.cpp's Qwen3-Coder parsers
+/// read them; failing that, the text
+static json param_value(const std::string& value, const json& decl) {
+    json v;
+    if (py_loads(value, v)) return v;
+    auto declares = [&decl](std::string_view type) {
+        if (decl.is_string()) return decl.get_ref<const std::string&>() == type;
+        if (decl.is_array())
+            for (const auto& t : decl)
+                if (t.is_string() && t.get_ref<const std::string&>() == type) return true;
+        return false;
+    };
+    std::string low(strip(value));
+    for (char& c : low) c = (char) std::tolower((unsigned char) c);
+    if (declares("boolean") && (low == "true" || low == "false")) return json(low == "true");
+    if (declares("null") && (low == "none" || low == "null")) return json(nullptr);
+    return json(value);
+}
+
 ToolCall parse_tool_call(std::string_view body0, const json& schema) {
     const std::string_view body = strip(body0);
     if (!starts_with(body, kFuncStart) || body.find('>') == std::string_view::npos)
@@ -996,8 +1017,7 @@ ToolCall parse_tool_call(std::string_view body0, const json& schema) {
         if (decl.is_string() && decl.get_ref<const std::string&>() == "string") {
             call.arguments[pname] = value;
         } else {
-            json v;
-            call.arguments[pname] = py_loads(value, v) ? v : json(value);
+            call.arguments[pname] = param_value(value, decl);
         }
     }
     return call;
@@ -1131,6 +1151,7 @@ void OutputParser::reset_scan() {
     sfirst_ = true;
     sval_started_ = false;
     sdeclared_ = json::object();
+    sparam_.clear();
 }
 
 long OutputParser::wrapped_call_end() {
@@ -1202,6 +1223,7 @@ std::vector<Event> OutputParser::scan() {
                 const size_t b = stripped.find('>');
                 if (b == std::string_view::npos) return out;
                 const std::string pname(stripped.substr(11, b - 11));
+                sparam_ = pname;
                 args(std::string(sfirst_ ? "" : ",") + py_dumps(json(pname)) + ":");
                 sfirst_ = false;
                 sp_ += b + 1;
@@ -1252,9 +1274,7 @@ std::vector<Event> OutputParser::scan() {
             std::string value(rest.substr(0, (size_t) end));
             if (starts_with(value, "\n")) value.erase(0, 1);
             if (ends_with(value, "\n")) value.pop_back();
-            json v;
-            if (!py_loads(value, v)) v = value;
-            args(py_dumps(v, false));
+            args(py_dumps(param_value(value, jget(sdeclared_, sparam_)), false));
             sp_ += (size_t) end + kParamEnd.size();
             ss_ = "between";
         } else {
